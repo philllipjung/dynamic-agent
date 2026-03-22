@@ -1,0 +1,62 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+        endpoint: "0.0.0.0:4318"
+
+exporters:
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+  otlp:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+connectors:
+  spanmetrics:
+    metrics_flush_interval: 60s
+
+  servicegraph:
+    # Custom latency histogram buckets for service graph metrics
+    latency_histogram_buckets: [100ms, 250ms, 1s, 5s, 10s]
+    # Store configuration for pairing spans
+    store:
+      ttl: 60s
+      max_items: 10000
+    # Virtual node attributes for uninstrumented services (databases, messaging systems)
+    virtual_node_peer_attributes:
+      - peer.service
+      - db.name
+      - db.system
+      - messaging.system
+      - messaging.destination
+    virtual_node_extra_label: true
+    # Metrics flush interval
+    metrics_flush_interval: 60s
+
+processors:
+  batch:
+
+service:
+  telemetry:
+    logs:
+      level: debug
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [spanmetrics, servicegraph, otlp]
+
+    # The metrics pipeline receives generated span metrics from 'spanmetrics' connector
+    # and pushes to Prometheus exporter, which makes them available for scraping on :8889.
+    metrics/spanmetrics:
+      receivers: [spanmetrics]
+      exporters: [prometheus]
+
+    # The service graph metrics pipeline receives metrics from 'servicegraph' connector
+    # and pushes to Prometheus exporter for service graph visualization
+    metrics/servicegraph:
+      receivers: [servicegraph]
+      exporters: [prometheus]

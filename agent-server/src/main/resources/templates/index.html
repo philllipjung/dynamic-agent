@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Java Agent System - Arthas & ByteBuddy</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 1px solid #333;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #00d9ff;
+            font-size: 2em;
+        }
+        .status-bar {
+            background: #16213e;
+            padding: 10px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #e94560;
+        }
+        .status-dot.connected {
+            background: #0f3460;
+            box-shadow: 0 0 10px #0f3460;
+        }
+        .section {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #333;
+        }
+        .section-title {
+            color: #00d9ff;
+            font-size: 1.3em;
+            font-weight: 600;
+        }
+        .section-subtitle {
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        /* Function Cards Grid */
+        .functions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+        .function-card {
+            background: #0f3460;
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid #333;
+        }
+        .function-card:hover {
+            border-color: #00d9ff;
+        }
+        .function-title {
+            color: #00d9ff;
+            font-size: 1.1em;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .function-icon {
+            font-size: 1.3em;
+        }
+        .function-desc {
+            color: #aaa;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-label {
+            display: block;
+            color: #ccc;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+        .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            background: #1a1a2e;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #eee;
+            font-size: 0.95em;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: #00d9ff;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95em;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .btn-primary {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+        .btn-primary:hover {
+            background: #00b8de;
+        }
+        .btn-success {
+            background: #00d9a5;
+            color: #1a1a2e;
+        }
+        .btn-success:hover {
+            background: #00c094;
+        }
+        .btn-secondary {
+            background: #533483;
+            color: #eee;
+        }
+        .btn-secondary:hover {
+            background: #6a3f9d;
+        }
+        .btn-warning {
+            background: #e94560;
+            color: #fff;
+        }
+        .btn-warning:hover {
+            background: #d13d56;
+        }
+
+        /* Output Area */
+        .output-area {
+            margin-top: 15px;
+            padding: 15px;
+            background: #1a1a2e;
+            border-radius: 6px;
+            border: 1px solid #333;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+        }
+        .output-line {
+            padding: 3px 0;
+        }
+        .output-success { color: #00d9a5; }
+        .output-error { color: #e94560; }
+        .output-info { color: #00d9ff; }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #333;
+        }
+        .tab {
+            padding: 8px 16px;
+            background: transparent;
+            color: #888;
+            border: none;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .tab:hover {
+            color: #eee;
+        }
+        .tab.active {
+            color: #00d9ff;
+            border-bottom-color: #00d9ff;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Section indicators */
+        .section-indicator {
+            display: inline-block;
+            padding: 4px 10px;
+            background: #00d9ff;
+            color: #1a1a2e;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-right: 10px;
+        }
+
+        /* Discovery Panel */
+        .discovery-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .discovery-row {
+            background: #0f3460;
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid #333;
+        }
+        .discovery-input-group {
+            margin-bottom: 15px;
+        }
+        .input-with-button {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .input-with-button .form-input {
+            flex: 1;
+        }
+        .search-btn {
+            white-space: nowrap;
+            min-width: 80px;
+        }
+        .discovery-results {
+            background: #1a1a2e;
+            border-radius: 6px;
+            border: 1px solid #333;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+        }
+        .search-result-item {
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .search-result-item:hover {
+            background: #16213e;
+        }
+        .search-result-item.selected {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+        .search-result-name {
+            font-weight: 500;
+        }
+        .search-result-meta {
+            font-size: 0.85em;
+            color: #888;
+        }
+        .search-result-item.selected .search-result-meta {
+            color: #1a1a2e;
+            opacity: 0.7;
+        }
+        .clickable-result {
+            cursor: pointer;
+        }
+        .clickable-result:hover {
+            background: #533483;
+        }
+        .use-button {
+            padding: 4px 12px;
+            font-size: 0.85em;
+            background: #00d9ff;
+            color: #1a1a2e;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .use-button:hover {
+            background: #00b8de;
+        }
+        .result-group {
+            margin-bottom: 10px;
+        }
+        .result-group-header {
+            color: #00d9ff;
+            font-weight: 600;
+            padding: 5px 0;
+            border-bottom: 1px solid #333;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Java Agent System</h1>
+            <p style="color: #888;">Arthas & ByteBuddy On-Demand Instrumentation</p>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-indicator">
+                <div class="status-dot" id="wsStatusDot"></div>
+                <span id="wsStatusText">Disconnected</span>
+                <span style="margin-left: 20px; color: #888;">|</span>
+                <span style="margin-left: 20px;">Sessions: <span id="sessionCount" style="color: #00d9ff;">0</span></span>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-success" onclick="showAttachDialog()">+ Attach</button>
+                <button class="btn btn-warning" onclick="showSessionsDialog()">Sessions</button>
+                <button class="btn btn-danger" onclick="resetAllSessions()">Reset All</button>
+                <button class="btn btn-secondary" onclick="clearAllOutputs()">Clear All</button>
+            </div>
+        </div>
+
+        <!-- Attach Dialog -->
+        <div id="attachDialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
+            <div style="background: #16213e; padding: 30px; border-radius: 12px; min-width: 500px; max-width: 600px;">
+                <h3 style="color: #00d9ff; margin-bottom: 20px;">Attach Arthas to JVM</h3>
+                <div class="form-group">
+                    <label class="form-label">Java Processes (PID - Class Name)</label>
+                    <div id="processList" style="background: #1a1a2e; padding: 15px; border-radius: 6px; max-height: 300px; overflow-y: auto; margin-bottom: 15px;">
+                        <div style="color: #888;">Loading...</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button class="btn btn-secondary" onclick="hideAttachDialog()">Cancel</button>
+                    <button class="btn btn-success" onclick="refreshProcessList()">Refresh</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sessions Dialog -->
+        <div id="sessionsDialog" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
+            <div style="background: #16213e; padding: 30px; border-radius: 12px; min-width: 500px; max-width: 600px;">
+                <h3 style="color: #00d9ff; margin-bottom: 20px;">Active Arthas Sessions</h3>
+                <div id="sessionsList" style="background: #1a1a2e; padding: 15px; border-radius: 6px; max-height: 300px; overflow-y: auto; margin-bottom: 15px;">
+                    <div style="color: #888;">Loading...</div>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-secondary" onclick="hideSessionsDialog()">Close</button>
+                        <button class="btn btn-success" onclick="refreshSessions()">Refresh</button>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-danger" onclick="resetAllSessions()">Reset All</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Discovery Panel -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <span class="section-title">🔍 Class & Method Discovery</span>
+                    <span class="section-subtitle"> - Use Arthas sc/sm to find classes and methods</span>
+                </div>
+            </div>
+
+            <div class="discovery-container">
+                <!-- Class Search (sc) -->
+                <div class="discovery-row">
+                    <div class="discovery-input-group">
+                        <label class="form-label">Search Classes (sc)</label>
+                        <div class="input-with-button">
+                            <input type="text" class="form-input" id="classSearchPattern" placeholder="e.g., com.example, MyClassName, *Controller">
+                            <button class="btn btn-secondary search-btn" onclick="searchClasses()">Search</button>
+                        </div>
+                    </div>
+                    <div class="discovery-results" id="classSearchResults">
+                        <div class="output-line output-info">Search results will appear here...</div>
+                    </div>
+                </div>
+
+                <!-- Method Search (sm) -->
+                <div class="discovery-row">
+                    <div class="discovery-input-group">
+                        <label class="form-label">Search Methods (sm)</label>
+                        <div class="input-with-button">
+                            <input type="text" class="form-input" id="methodSearchClass" placeholder="Class name (required)" style="width: 45%;">
+                            <input type="text" class="form-input" id="methodSearchPattern" placeholder="Method pattern (e.g., get*, *Service)" style="width: 35%;">
+                            <button class="btn btn-secondary search-btn" onclick="searchMethods()">Search</button>
+                        </div>
+                    </div>
+                    <div class="discovery-results" id="methodSearchResults">
+                        <div class="output-line output-info">Search results will appear here...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 1: Arthas Functions -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <span class="section-indicator">1</span>
+                    <span class="section-title">Arthas Functions</span>
+                    <span class="section-subtitle"> - Trace/Stack/Watch for method diagnostics</span>
+                </div>
+            </div>
+
+            <div class="functions-grid">
+                <!-- Arthas Trace -->
+                <div class="function-card">
+                    <div class="function-title">
+                        <span class="function-icon">🔍</span>
+                        Arthas - Trace
+                    </div>
+                    <p class="function-desc">Trace method execution path with timing</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Class Name</label>
+                            <input type="text" class="form-input" id="traceClassName" placeholder="com.example.MyClass">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Method Name</label>
+                            <input type="text" class="form-input" id="traceMethodName" placeholder="myMethod">
+                        </div>
+                    </div>
+                    <button class="btn btn-warning" onclick="traceMethod()">Trace Method</button>
+                    <div class="output-area" id="traceOutput">
+                        <div class="output-line output-info">Output will appear here...</div>
+                    </div>
+                </div>
+
+                <!-- Arthas Stack -->
+                <div class="function-card">
+                    <div class="function-title">
+                        <span class="function-icon">📚</span>
+                        Arthas - Stack
+                    </div>
+                    <p class="function-desc">Get full stack trace of method calls</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Class Name</label>
+                            <input type="text" class="form-input" id="stackClassName" placeholder="com.example.MyClass">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Method Name</label>
+                            <input type="text" class="form-input" id="stackMethodName" placeholder="myMethod">
+                        </div>
+                    </div>
+                    <button class="btn btn-warning" onclick="stackMethod()">Get Stack</button>
+                    <div class="output-area" id="stackOutput">
+                        <div class="output-line output-info">Output will appear here...</div>
+                    </div>
+                </div>
+
+                <!-- Arthas Watch -->
+                <div class="function-card" style="grid-column: span 2;">
+                    <div class="function-title">
+                        <span class="function-icon">👁️</span>
+                        Arthas - Watch (Parameters & Return Values)
+                    </div>
+                    <p class="function-desc">Watch method parameters, return values, and exceptions (auto-stops after 5 invocations)</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Class Name</label>
+                            <input type="text" class="form-input" id="watchClassName" placeholder="com.example.MyClass">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Method Name</label>
+                            <input type="text" class="form-input" id="watchMethodName" placeholder="myMethod">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">OGNL Expression</label>
+                            <input type="text" class="form-input" id="watchExpression" placeholder="{params, returnObj}" value="{params, returnObj}">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Limit (invocations)</label>
+                            <input type="number" class="form-input" id="watchLimit" value="5" min="1" max="100">
+                        </div>
+                    </div>
+                    <button class="btn btn-warning" onclick="watchMethod()">Watch Method (5x)</button>
+                    <div class="output-area" id="watchOutput">
+                        <div class="output-line output-info">Output will appear here...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 2: Span Creation -->
+        <div class="section">
+            <div class="section-header">
+                <div>
+                    <span class="section-indicator">2</span>
+                    <span class="section-title">Span Creation</span>
+                    <span class="section-subtitle"> - Create OpenTelemetry spans for methods</span>
+                </div>
+            </div>
+
+            <div class="functions-grid">
+                <!-- Class Search (sc) -->
+                <div class="function-card">
+                    <div class="function-title">
+                        <span class="function-icon">🔎</span>
+                        Search Classes (sc)
+                    </div>
+                    <p class="function-desc">Find classes by name pattern using Arthas sc</p>
+                    <div class="form-group">
+                        <label class="form-label">Class Pattern</label>
+                        <input type="text" class="form-input" id="classSearchPattern" placeholder="*UserId*">
+                    </div>
+                    <button class="btn btn-info" onclick="searchClasses()">Search Classes</button>
+                    <div class="output-area" id="classSearchResults" style="max-height: 200px; overflow-y: auto;">
+                        <div class="output-line output-info">Class search results will appear here...</div>
+                    </div>
+                </div>
+
+                <!-- Method Search (sm) -->
+                <div class="function-card">
+                    <div class="function-title">
+                        <span class="function-icon">📋</span>
+                        Search Methods (sm)
+                    </div>
+                    <p class="function-desc">Find methods in a class using Arthas sm</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Class Name</label>
+                            <input type="text" class="form-input" id="methodSearchClass" placeholder="com.test.service.shared.UserIdService">
+                        </div>
+                    </div>
+                    <button class="btn btn-info" onclick="searchMethods()">Search Methods</button>
+                    <div class="output-area" id="methodSearchResults" style="max-height: 200px; overflow-y: auto;">
+                        <div class="output-line output-info">Method search results will appear here...</div>
+                    </div>
+                </div>
+
+                <!-- Create Span -->
+                <div class="function-card" style="grid-column: span 2;">
+                    <div class="function-title">
+                        <span class="function-icon">🎯</span>
+                        Create OpenTelemetry Span
+                    </div>
+                    <p class="function-desc">Create span for selected method (adds method name as attribute)</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Class Name</label>
+                            <input type="text" class="form-input" id="spanClassName" placeholder="Auto-filled from search">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Method Name</label>
+                            <input type="text" class="form-input" id="spanMethodName" placeholder="Auto-filled from search">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="createSpan()">Create Span</button>
+                    <div class="output-area" id="spanOutput">
+                        <div class="output-line output-info">Span creation status will appear here...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 3: Span Attributes (Placeholder for future) -->
+        <div class="section" style="opacity: 0.5;">
+            <div class="section-header">
+                <div>
+                    <span class="section-indicator">3</span>
+                    <span class="section-title">Span Attributes</span>
+                    <span class="section-subtitle"> - Coming Soon</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 3: Span Links (Placeholder for future) -->
+        <div class="section" style="opacity: 0.5;">
+            <div class="section-header">
+                <div>
+                    <span class="section-indicator">3</span>
+                    <span class="section-title">Span Links</span>
+                    <span class="section-subtitle"> - Coming Soon</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 4: Network Measurements (Placeholder for future) -->
+        <div class="section" style="opacity: 0.5;">
+            <div class="section-header">
+                <div>
+                    <span class="section-indicator">4</span>
+                    <span class="section-title">Network Measurements</span>
+                    <span class="section-subtitle"> - OGNL Expressions - Coming Soon</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.javaagent</groupId>
+        <artifactId>java-agent-system</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>bytebuddy-advice</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>ByteBuddy Advice Classes</name>
+    <description>Standalone advice classes for bootstrap classpath</description>
+
+    <dependencies>
+        <!-- Agent Commons -->
+        <dependency>
+            <groupId>com.javaagent</groupId>
+            <artifactId>agent-commons</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy</artifactId>
+        </dependency>
+        <!-- OpenTelemetry API (same version as server1) -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+            <version>1.36.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-context</artifactId>
+            <version>1.36.0</version>
+        </dependency>
+        <!-- Redis for SpanLinkContext (can be removed later) -->
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>5.1.0</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>bytebuddy-advice-1.0.0</finalName>
+    </build>
+</project>
