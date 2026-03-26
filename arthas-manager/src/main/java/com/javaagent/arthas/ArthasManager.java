@@ -12,6 +12,8 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.json.JSONObject;
 import org.json.JSONArray;
 import org.springframework.web.client.RestTemplate;
@@ -19,6 +21,8 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.ClientHttpRequestFactory;
 
 /**
  * Arthas Manager using Tunnel Server HTTP API
@@ -36,8 +40,20 @@ public class ArthasManager {
     private static String arthasHome;
     private static String tunnelServerHost;
     private static int tunnelServerPort;
-    private static final RestTemplate restTemplate = new RestTemplate();
-    private static Process tunnelServerProcess;
+    private static final RestTemplate restTemplate;
+
+    // Async watch support
+    private static final ExecutorService watchExecutor = Executors.newCachedThreadPool();
+    private static final Map<String, JSONObject> watchResults = new ConcurrentHashMap<>();
+    private static final Map<String, String> watchStatus = new ConcurrentHashMap<>(); // RUNNING, COMPLETED, FAILED
+
+    static {
+        // Configure RestTemplate with longer timeout for watch commands
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(60000); // 60 seconds
+        factory.setReadTimeout(60000);    // 60 seconds (watch may take time)
+        restTemplate = new RestTemplate(factory);
+    }
 
     static {
         tunnelServerHost = System.getProperty(AgentConstants.PROP_ARTHAS_HOST, AgentConstants.DEFAULT_ARTHAS_HOST);
@@ -115,19 +131,17 @@ public class ArthasManager {
 
             if (os.contains("win")) {
                 // Windows: Use cmd.exe
+                // Note: --http-port, not --target-port. PID must come after options.
                 pb = new ProcessBuilder("cmd.exe", "/c",
-                    "start /B java -jar \"" + arthasBoot.getAbsolutePath() + "\" --target-ip " + tunnelServerHost + " --target-port " + tunnelServerPort + " " + pid);
+                    "start /B java -jar \"" + arthasBoot.getAbsolutePath() + "\" --target-ip " + tunnelServerHost + " --http-port " + tunnelServerPort + " " + pid);
             } else {
                 // Unix/Mac: Use bash
                 pb = new ProcessBuilder("bash", "-c",
-                    "java -jar " + arthasBoot.getAbsolutePath() + " --target-ip " + tunnelServerHost + " --target-port " + tunnelServerPort + " " + pid + " &");
+                    "java -jar " + arthasBoot.getAbsolutePath() + " --target-ip " + tunnelServerHost + " --http-port " + tunnelServerPort + " " + pid + " &");
             }
 
             pb.redirectErrorStream(true);
-            Process process = pb.start();
-
-            // Store process for cleanup
-            tunnelServerProcess = process;
+            pb.start();
 
             // Wait a moment for Arthas to start and HTTP API to become available
             Thread.sleep(3000);
@@ -162,7 +176,7 @@ public class ArthasManager {
             JSONObject requestBody = new JSONObject();
             requestBody.put("action", "exec");
             requestBody.put("command", command);
-            requestBody.put("execTimeout", "30000");
+            requestBody.put("execTimeout", "60000");
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -206,10 +220,9 @@ public class ArthasManager {
                 return new JSONObject().put("error", "No running JVM found");
             }
 
-            // Build watch command to capture parameter names and values
-            // watch com.example.Class method '{params, @java.util.Arrays@toString(params)}' -n N -x 2
-            // Use limit to capture multiple method calls
-            String watchCmd = String.format("watch %s %s '{params}' -n %d -x 1",
+            // Build watch command to capture parameter values only
+            // User will provide parameter names in UI
+            String watchCmd = String.format("watch %s %s params -n %d -x 1",
                 className, methodName, limit);
 
             System.out.println("[ArthasManager] Executing watch: " + watchCmd);
@@ -458,81 +471,6 @@ public class ArthasManager {
         } catch (Exception e) {
             return "ERROR: " + e.getMessage();
         }
-    }
-
-    /**
-     * Execute Arthas command by attaching and running the command
-     */
-    private static String executeArthasCommand(String pid, String command) throws Exception {
-        // Ensure Arthas is available
-        ensureArthasAvailable();
-
-        // Verify arthas-boot.jar exists
-        File arthasBoot = new File(arthasHome, "arthas-boot.jar");
-        if (!arthasBoot.exists()) {
-            return "ERROR: Arthas boot jar not found at: " + arthasBoot.getAbsolutePath() +
-                   "\nPlease download it: curl -O https://arthas.aliyun.com/arthas-boot.jar && mv arthas-boot.jar ~/.arthas/";
-        }
-
-        // Create batch file for command execution (Windows/Mac compatible)
-        String tempDir = System.getProperty("java.io.tmpdir");
-        String batchFile = tempDir + File.separator + "arthas_batch_" + System.currentTimeMillis() + ".as";
-        String batchContent = command;
-        java.nio.file.Files.write(java.nio.file.Paths.get(batchFile), batchContent.getBytes());
-
-        // Use arthas-boot with batch file
-        String os = System.getProperty("os.name").toLowerCase();
-        ProcessBuilder pb;
-
-        if (os.contains("win")) {
-            // Windows: Use cmd.exe
-            pb = new ProcessBuilder("cmd.exe", "/c",
-                String.format("cd /d %s && java -jar arthas-boot.jar %s -f %s", arthasHome, pid, batchFile));
-        } else {
-            // Unix/Mac: Use bash
-            pb = new ProcessBuilder("bash", "-c",
-                String.format("cd %s && timeout 60 java -jar arthas-boot.jar %s -f %s 2>&1", arthasHome, pid, batchFile));
-        }
-
-        pb.redirectErrorStream(true);
-        Process process = pb.start();
-
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-        }
-
-        try {
-            boolean finished = process.waitFor(50, TimeUnit.SECONDS);
-            if (!finished) {
-                process.destroyForcibly();
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            process.destroyForcibly();
-        }
-
-        // Clean up batch file
-        try {
-            java.nio.file.Files.deleteIfExists(java.nio.file.Paths.get(batchFile));
-        } catch (Exception e) {
-            // Ignore cleanup errors
-        }
-
-        String result = output.toString();
-
-        // Check if there were actual errors
-        if (result.contains("java.io.FileNotFoundException: arthas-boot.jar") ||
-            result.contains("Error: Unable to access jarfile")) {
-            return "ERROR: Arthas boot jar not found or inaccessible.\n" +
-                   "Location: " + arthasBoot.getAbsolutePath() +
-                   "\nPlease download: curl -O https://arthas.aliyun.com/arthas-boot.jar && mv arthas-boot.jar ~/.arthas/";
-        }
-
-        return result;
     }
 
     /**
@@ -897,6 +835,118 @@ public class ArthasManager {
         }
 
         return output.toString();
+    }
+
+    /**
+     * Start async watch job - returns jobId immediately
+     * @param className Target class name
+     * @param methodName Target method name
+     * @param limit Number of calls to capture
+     * @return jobId for tracking
+     */
+    public static String startWatchAsync(String className, String methodName, int limit) {
+        String jobId = "watch-" + System.currentTimeMillis();
+        String pid = getFirstAvailablePid();
+
+        if (pid.startsWith("ERROR") || pid.isEmpty()) {
+            watchStatus.put(jobId, "FAILED");
+            watchResults.put(jobId, new JSONObject().put("error", "No running JVM found"));
+            return jobId;
+        }
+
+        watchStatus.put(jobId, "RUNNING");
+
+        // Execute watch in background thread
+        watchExecutor.submit(() -> {
+            try {
+                String watchCmd = String.format("watch %s %s params -n %d -x 1",
+                    className, methodName, limit);
+
+                System.out.println("[ArthasManager] Async watch started: " + jobId + " - " + watchCmd);
+
+                String result = executeTunnelApiCommand(pid, watchCmd);
+                JSONObject response = new JSONObject(result);
+
+                // Parse response
+                JSONArray parameters = new JSONArray();
+                if (response.has("body")) {
+                    JSONObject body = response.getJSONObject("body");
+                    if (body.has("results")) {
+                        JSONArray results = body.getJSONArray("results");
+                        for (int i = 0; i < results.length(); i++) {
+                            JSONObject resultItem = results.getJSONObject(i);
+                            if ("watch".equals(resultItem.optString("type"))) {
+                                String value = resultItem.optString("value", "");
+                                parameters = parseWatchValue(value);
+                                break; // Use first watch result
+                            }
+                        }
+                    }
+                }
+
+                JSONObject resultJson = new JSONObject();
+                resultJson.put("success", true);
+                resultJson.put("className", className);
+                resultJson.put("methodName", methodName);
+                resultJson.put("parameters", parameters);
+                resultJson.put("parameterCount", parameters.length());
+
+                watchResults.put(jobId, resultJson);
+                watchStatus.put(jobId, "COMPLETED");
+                System.out.println("[ArthasManager] Async watch completed: " + jobId + " - " + parameters.length() + " parameters");
+
+            } catch (Exception e) {
+                System.err.println("[ArthasManager] Async watch failed: " + jobId + " - " + e.getMessage());
+                watchResults.put(jobId, new JSONObject().put("error", e.getMessage()));
+                watchStatus.put(jobId, "FAILED");
+            }
+        });
+
+        return jobId;
+    }
+
+    /**
+     * Get watch result by jobId
+     * @param jobId Job ID from startWatchAsync
+     * @return Watch result with status
+     */
+    public static JSONObject getWatchResult(String jobId) {
+        JSONObject result = new JSONObject();
+        result.put("jobId", jobId);
+
+        String status = watchStatus.getOrDefault(jobId, "UNKNOWN");
+        result.put("status", status);
+
+        if ("COMPLETED".equals(status) || "FAILED".equals(status)) {
+            JSONObject data = watchResults.get(jobId);
+            if (data != null) {
+                // Copy all fields from data to result
+                for (String key : data.keySet()) {
+                    result.put(key, data.get(key));
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Clean up old watch results (older than 5 minutes)
+     */
+    public static void cleanupOldWatchResults() {
+        long fiveMinutesAgo = System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(5);
+
+        watchResults.entrySet().removeIf(entry -> {
+            String jobId = entry.getKey();
+            if (jobId.startsWith("watch-")) {
+                long timestamp = Long.parseLong(jobId.substring(6));
+                if (timestamp < fiveMinutesAgo) {
+                    watchStatus.remove(jobId);
+                    return true;
+                }
+            }
+            return false;
+        });
     }
 
     /**

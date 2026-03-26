@@ -1,7 +1,8 @@
 package com.javaagent.server.controller;
 
 import com.javaagent.arthas.ArthasManager;
-import com.javaagent.arthas.ArthasManager.ArthasSession;
+import com.javaagent.server.service.ParameterMappingService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -14,6 +15,9 @@ import java.util.Map;
 @RequestMapping("/api/arthas")
 @CrossOrigin(origins = "*")
 public class ArthasController {
+
+    @Autowired
+    private ParameterMappingService parameterMappingService;
 
     /**
      * Attach Arthas to a JVM by class name or PID
@@ -113,9 +117,9 @@ public class ArthasController {
      * Returns all captured parameter values from multiple method calls
      */
     @GetMapping("/getParameter")
-    public Map<String, Object> getParameter(@RequestParam String className,
-                                             @RequestParam String methodName,
-                                             @RequestParam(defaultValue = "5") int limit) {
+    public Map<String, Object> getParameter(@RequestParam("className") String className,
+                                             @RequestParam("methodName") String methodName,
+                                             @RequestParam(value = "limit", defaultValue = "5") int limit) {
         try {
             // Get parameter history from Arthas watch
             org.json.JSONObject result = ArthasManager.watchWithParameters(className, methodName, limit);
@@ -161,68 +165,66 @@ public class ArthasController {
     }
 
     /**
-     * Get parameters from method via HTTP API (for UI parameter selection)
-     * GET /api/arthas/getParameters?className=com.example.MyClass&methodName=myMethod
-     *
-     * Returns available parameters for the user to select for span attributes
+     * Start async watch job
+     * POST /api/arthas/startWatch
+     * Body: {"className": "com.example.MyClass", "methodName": "myMethod", "limit": 1}
      */
-    @GetMapping("/getParameters")
-    public Map<String, Object> getParameters(@RequestParam String className, @RequestParam String methodName) {
+    @PostMapping("/startWatch")
+    public Map<String, Object> startWatch(@RequestBody WatchRequest request) {
         try {
-            org.json.JSONObject result = ArthasManager.watchWithParameters(className, methodName, 1);
-
-            if (result.has("error")) {
-                return Map.of(
-                    "success", false,
-                    "error", result.getString("error"),
-                    "className", className,
-                    "methodName", methodName
-                );
-            }
-
-            // Extract parameters array from Arthas HTTP API response
-            java.util.List<Map<String, Object>> parameters = new java.util.ArrayList<>();
-            if (result.has("parameters")) {
-                org.json.JSONArray paramsArray = result.getJSONArray("parameters");
-                for (int i = 0; i < paramsArray.length(); i++) {
-                    Object param = paramsArray.get(i);
-                    if (param instanceof org.json.JSONObject) {
-                        org.json.JSONObject paramObj = (org.json.JSONObject) param;
-                        Map<String, Object> paramInfo = new java.util.LinkedHashMap<>();
-                        paramInfo.put("index", i);
-                        paramInfo.put("name", paramObj.optString("name", "param" + i));
-                        paramInfo.put("type", paramObj.optString("type", "Object"));
-                        paramInfo.put("value", paramObj.optString("value", ""));
-                        paramInfo.put("selected", false); // UI에서 선택 가능
-                        parameters.add(paramInfo);
-                    }
-                }
-            }
-
-            // 파라미터가 없는 경우 - 하드코딩된 기본값 없음
-            String message;
-            if (parameters.isEmpty()) {
-                message = "No parameters extracted. Method may not have been called yet. Call the method first, then retry.";
-            } else {
-                message = "Found " + parameters.size() + " parameter(s). Select parameters to include as span attributes.";
-            }
+            String jobId = ArthasManager.startWatchAsync(
+                request.getClassName(),
+                request.getMethodName(),
+                request.getLimit()
+            );
 
             return Map.of(
                 "success", true,
-                "className", className,
-                "methodName", methodName,
-                "parameters", parameters,
-                "count", parameters.size(),
-                "message", message
+                "jobId", jobId,
+                "message", "Watch job started. Call the method, then check result with /api/arthas/getWatchResult/" + jobId,
+                "status", "RUNNING"
             );
 
         } catch (Exception e) {
             e.printStackTrace();
             return Map.of(
                 "success", false,
+                "error", e.getMessage()
+            );
+        }
+    }
+
+    /**
+     * Get watch result
+     * GET /api/arthas/getWatchResult/{jobId}
+     */
+    @GetMapping("/getWatchResult/{jobId}")
+    public Map<String, Object> getWatchResult(@PathVariable("jobId") String jobId) {
+        try {
+            org.json.JSONObject result = ArthasManager.getWatchResult(jobId);
+
+            // Convert JSONObject to Map
+            Map<String, Object> resultMap = new java.util.LinkedHashMap<>();
+            for (String key : result.keySet()) {
+                Object value = result.get(key);
+                if (value instanceof org.json.JSONObject) {
+                    // Keep as JSONObject for now, Spring will convert
+                    resultMap.put(key, value.toString());
+                } else if (value instanceof org.json.JSONArray) {
+                    resultMap.put(key, value.toString());
+                } else {
+                    resultMap.put(key, value);
+                }
+            }
+
+            return resultMap;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Map.of(
+                "success", false,
                 "error", e.getMessage(),
-                "className", className,
-                "methodName", methodName
+                "jobId", jobId
             );
         }
     }
@@ -375,9 +377,7 @@ public class ArthasController {
             }
 
             // Store mapping in Redis (agent-server)
-            com.javaagent.server.service.ParameterMappingService mappingService =
-                getContext().getBean(com.javaagent.server.service.ParameterMappingService.class);
-            mappingService.saveMapping(request.getClassName(), request.getMethodName(), paramMapping);
+            parameterMappingService.saveMapping(request.getClassName(), request.getMethodName(), paramMapping);
 
             // Also store in SpanAttributeAdvice cache for runtime use
             com.javaagent.bytebuddy.advices.SpanAttributeAdvice.setParameterMapping(
@@ -401,11 +401,6 @@ public class ArthasController {
                 "error", e.getMessage()
             );
         }
-    }
-
-    private org.springframework.context.ApplicationContext getContext() {
-        return org.springframework.web.context.ContextLoaderListener
-            .getCurrentWebApplicationContext();
     }
 
     // Request DTOs

@@ -40,6 +40,11 @@ public final class AgentConstants {
 
     // ByteBuddy Helper Classes
     public static final String[] HELPER_CLASSES = {
+        "com.javaagent.bytebuddy.advices.SpanAdvice",
+        "com.javaagent.bytebuddy.advices.SpanAttributeAdvice",
+        "com.javaagent.bytebuddy.advices.SpanLinkAdvice",
+        "com.javaagent.bytebuddy.advices.EventAdvice",
+        "com.javaagent.bytebuddy.advices.KernelAdvice",
         "com.javaagent.bytebuddy.helper.SpanAttributeHelper",
         "com.javaagent.bytebuddy.helper.SpanHelper",
         "com.javaagent.bytebuddy.helper.SpanLinkHelper",

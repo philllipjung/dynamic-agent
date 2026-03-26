@@ -15,6 +15,7 @@ import java.util.Map;
  * Key format: "paramMapping:{className}:{methodName}"
  * Value: JSON string of {"0": "userId", "1": "sessionId"}
  */
+@SuppressWarnings("unchecked")
 @Service
 public class ParameterMappingService {
 
@@ -45,7 +46,8 @@ public class ParameterMappingService {
 
         } catch (Exception e) {
             System.err.println("[ParameterMappingService] Failed to save mapping: " + e.getMessage());
-            throw new RuntimeException("Failed to save parameter mapping", e);
+            // Don't throw exception - allow operation to continue without Redis
+            System.err.println("[ParameterMappingService] Continuing without Redis (mapping will only be in SpanAttributeAdvice cache)");
         }
     }
 

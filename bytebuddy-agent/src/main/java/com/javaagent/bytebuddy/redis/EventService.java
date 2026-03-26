@@ -9,7 +9,6 @@ import redis.clients.jedis.JedisPoolConfig;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Event Service - Stores HTTP request/response events in Redis
@@ -18,6 +17,7 @@ import java.util.Set;
  * - "event:{eventId}" - Individual event data
  * - "event:all" - Sorted set of all event IDs (scored by timestamp)
  */
+@SuppressWarnings("unchecked")
 public class EventService {
 
     public static JedisPool jedisPool;
@@ -91,7 +91,7 @@ public class EventService {
 
         try (Jedis jedis = jedisPool.getResource()) {
             // Get all event IDs (sorted by timestamp, newest first)
-            Set<String> eventIds = jedis.zrevrange(ALL_EVENTS_KEY, 0, -1);
+            List<String> eventIds = jedis.zrevrange(ALL_EVENTS_KEY, 0, -1);
 
             List<Map<String, Object>> events = new ArrayList<>();
             for (String eventId : eventIds) {
@@ -146,7 +146,7 @@ public class EventService {
 
         try (Jedis jedis = jedisPool.getResource()) {
             // Get all event IDs
-            Set<String> eventIds = jedis.zrange(ALL_EVENTS_KEY, 0, -1);
+            List<String> eventIds = jedis.zrange(ALL_EVENTS_KEY, 0, -1);
 
             // Delete individual events
             for (String eventId : eventIds) {
@@ -173,7 +173,7 @@ public class EventService {
             if (count > MAX_EVENTS) {
                 // Remove oldest events (lowest scores)
                 long toRemove = count - MAX_EVENTS;
-                Set<String> oldEventIds = jedis.zrange(ALL_EVENTS_KEY, 0, toRemove - 1);
+                List<String> oldEventIds = jedis.zrange(ALL_EVENTS_KEY, 0, toRemove - 1);
 
                 for (String eventId : oldEventIds) {
                     String eventKey = EVENT_KEY_PREFIX + eventId;

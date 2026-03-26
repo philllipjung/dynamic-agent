@@ -1,7 +1,7 @@
 package com.javaagent.bytebuddy.helper;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.BufferedReader;
 import java.util.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * - Stores events in Redis via EventService for UI display
  * - Thread-safe event storage
  */
+@SuppressWarnings("unchecked")
 public class EventHelper {
     private static final ThreadLocal<String> currentEventId = new ThreadLocal<>();
 

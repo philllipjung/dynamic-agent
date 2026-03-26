@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * WebSocket handler for real-time agent communication
  */
+@SuppressWarnings("unchecked")
 public class AgentWebSocketHandler extends TextWebSocketHandler {
 
     private static final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();

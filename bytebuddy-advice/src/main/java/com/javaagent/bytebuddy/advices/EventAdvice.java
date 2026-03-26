@@ -2,12 +2,10 @@ package com.javaagent.bytebuddy.advices;
 
 import com.javaagent.bytebuddy.helper.EventHelper;
 import net.bytebuddy.asm.Advice;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.FilterChain;
-import java.lang.reflect.Method;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
 
 /**
  * EventAdvice - Intercepts Spring Filter's doFilter method to capture HTTP events
@@ -32,7 +30,6 @@ public class EventAdvice {
      */
     @Advice.OnMethodEnter(suppress = Throwable.class)
     public static void onMethodEnter(
-            @Advice.Origin Method method,
             @Advice.Argument(0) ServletRequest request,
             @Advice.Argument(1) ServletResponse response
     ) {

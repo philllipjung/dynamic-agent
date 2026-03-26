@@ -29,7 +29,7 @@ public class SpanAttributeAdvice {
             Scope scope = span.makeCurrent();
             scopeHolder.set(scope);
             SpanAttributeHelper helper = new SpanAttributeHelper(span);
-            helper.setBasicAttributes(className, methodName, Thread.currentThread().getId(), getLinuxThreadId(), getPid());
+            helper.setBasicAttributes(className, methodName, Thread.currentThread().getId(), getLinuxThreadId(), getPid()); // getId() deprecated in Java 19+ but required for Java 8-17
             if (allArguments != null && paramNameMapping != null) {
                 for (Map.Entry<Integer, String> entry : paramNameMapping.entrySet()) {
                     int paramIndex = entry.getKey();

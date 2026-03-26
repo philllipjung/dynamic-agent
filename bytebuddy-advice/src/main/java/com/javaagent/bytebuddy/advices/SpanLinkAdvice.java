@@ -3,7 +3,6 @@ package com.javaagent.bytebuddy.advices;
 import com.javaagent.bytebuddy.helper.SpanLinkHelper;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.context.Scope;
 import net.bytebuddy.asm.Advice;
 
 import java.lang.reflect.Method;
@@ -18,10 +17,10 @@ import java.util.Map;
  *
  * Uses Reflection to access Redis/OpenSearch services from bytebuddy-agent module.
  */
+@SuppressWarnings("unchecked")
 public class SpanLinkAdvice {
 
     private static final ThreadLocal<SpanLinkHelper> helperHolder = new ThreadLocal<>();
-    private static final ThreadLocal<Scope> scopeHolder = new ThreadLocal<>();
 
     @Advice.OnMethodEnter
     public static void onMethodEnter(

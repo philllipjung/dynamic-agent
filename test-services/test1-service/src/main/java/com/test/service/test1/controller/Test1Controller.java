@@ -17,14 +17,10 @@ public class Test1Controller {
 
     @GetMapping
     public String test1(@RequestHeader(value = "userId", required = false) String userId) {
-        // If no userId in header, generate new one
         if (userId == null || userId.isEmpty()) {
             userId = userIdService.generateUserId();
         }
-
-        // Call setUserId method
         String result = userIdService.setUserId(userId);
-
         return "Test1 - userId: " + userId + ", setUserId result: " + result;
     }
 
@@ -38,5 +34,17 @@ public class Test1Controller {
     public String generateUserId() {
         String userId = userIdService.generateUserId();
         return userId;
+    }
+
+    @GetMapping("/pojo")
+    public String testPojo(@RequestParam(defaultValue = "test") String input) {
+        com.test.service.shared.TestPojo pojo = new com.test.service.shared.TestPojo();
+        return pojo.doSomething(input);
+    }
+
+    // 새로운 메서드 - advice 테스트용
+    @GetMapping("/newMethod")
+    public String newMethod(@RequestParam(defaultValue = "test") String input) {
+        return "NEW_METHOD: " + input + " at " + System.currentTimeMillis();
     }
 }

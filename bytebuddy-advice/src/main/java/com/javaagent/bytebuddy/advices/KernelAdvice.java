@@ -2,7 +2,6 @@ package com.javaagent.bytebuddy.advices;
 
 import com.javaagent.bytebuddy.helper.KernelHelper;
 import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.context.Scope;
 import net.bytebuddy.asm.Advice;
 import java.lang.reflect.Method;
 
@@ -34,7 +33,6 @@ import java.lang.reflect.Method;
  */
 public class KernelAdvice {
     private static final ThreadLocal<KernelHelper> helperHolder = new ThreadLocal<>();
-    private static final ThreadLocal<Scope> scopeHolder = new ThreadLocal<>();
     private static final ThreadLocal<Long> startTimeHolder = new ThreadLocal<>();
 
     /**
@@ -100,7 +98,7 @@ public class KernelAdvice {
             long durationMs = (startTime != null) ? (System.nanoTime() - startTime) / 1_000_000 : 0;
 
             // Set duration attribute
-            helper.setAttribute("method.duration.ms", durationMs);
+            helper.setAttribute("method.duration.ms", String.valueOf(durationMs));
 
             // Record exception if thrown
             if (throwable != null) {
@@ -187,7 +185,6 @@ public class KernelAdvice {
             helper.complete();
         }
         helperHolder.remove();
-        scopeHolder.remove();
         startTimeHolder.remove();
         parallelTaskNumber.remove();
     }

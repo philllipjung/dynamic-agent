@@ -254,6 +254,14 @@ public class SpanAttributeAdvice {
             String className = target.getClass().getName();
             String methodName = method != null ? method.getName() : "unknown";
 
+            // 기존 스팬을 사용 - 새로 생성하지 않음
+            io.opentelemetry.api.trace.Span span = io.opentelemetry.api.trace.Span.current();
+
+            // 유효한 스판이 없으면 처리하지 않음
+            if (span == null || !span.getSpanContext().isValid()) {
+                return;
+            }
+
             // 매핑 조회
             Map<Integer, String> mapping = getParameterMapping(className, methodName);
 
@@ -261,13 +269,7 @@ public class SpanAttributeAdvice {
                 return;
             }
 
-            // 스팬 생성
-            Tracer tracer = getTracer();
-            Span span = tracer.spanBuilder(className + "." + methodName)
-                    .setParent(io.opentelemetry.context.Context.current())
-                    .startSpan();
-
-            // 속성 설정
+            // 속성 설정 (기존 스팬에 속성만 추가)
             SpanAttributeHelper attrHelper = new SpanAttributeHelper(span);
             for (Map.Entry<Integer, String> entry : mapping.entrySet()) {
                 int paramIndex = entry.getKey();
@@ -281,7 +283,7 @@ public class SpanAttributeAdvice {
                 attrHelper.setAttribute(attrKey, attrValue);
             }
 
-            span.end();
+            // span.end() 호출하지 않음 - 기존 스팬이므로
 
         } catch (Exception e) {
             System.err.println("[SpanAttributeAdvice] Error: " + e.getMessage());

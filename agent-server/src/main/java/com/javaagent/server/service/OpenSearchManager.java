@@ -1,6 +1,5 @@
 package com.javaagent.server.service;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.apache.http.HttpHost;
 import org.apache.http.entity.ContentType;
@@ -317,12 +316,5 @@ public class OpenSearchManager {
         }
 
         return attributes;
-    }
-
-    /**
-     * Get attributes from sample documents (instance method wrapper)
-     */
-    private List<String> getAttributesFromSampleDocuments(String spanName, int sampleSize) {
-        return getAttributesFromSampleDocumentsStatic(spanName, sampleSize);
     }
 }

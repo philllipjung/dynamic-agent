@@ -5,16 +5,6 @@ spring:
   application:
     name: test1-service
 
-# OpenTelemetry Configuration
-otel:
-  service:
-    name: test1-service
-  exporter:
-    otlp:
-      endpoint: http://localhost:4317
-  traces:
-    exporter: otlp
-
 # Actuator
 management:
   endpoints:

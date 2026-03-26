@@ -5,9 +5,9 @@ import com.sun.tools.attach.VirtualMachine;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.lang.instrument.Instrumentation;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manager for attaching ByteBuddy agent to running JVM
@@ -15,6 +15,7 @@ import java.nio.file.StandardCopyOption;
 public class AttachManager {
 
     private static String agentJarPath;
+    private static final Map<String, Instrumentation> instrumentationMap = new ConcurrentHashMap<>();
 
     /**
      * Attach ByteBuddy agent to a JVM by PID
@@ -36,6 +37,21 @@ public class AttachManager {
         } catch (Exception e) {
             return "ERROR: " + e.getMessage();
         }
+    }
+
+    /**
+     * Store instrumentation for a PID (called by ByteBuddyAgent.agentmain)
+     */
+    public static void setInstrumentation(String pid, Instrumentation inst) {
+        instrumentationMap.put(pid, inst);
+        System.out.println("[AttachManager] Stored instrumentation for PID: " + pid);
+    }
+
+    /**
+     * Get instrumentation for a PID
+     */
+    public static Instrumentation getInstrumentation(String pid) {
+        return instrumentationMap.get(pid);
     }
 
     /**

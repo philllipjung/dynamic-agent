@@ -1,10 +1,19 @@
 package com.javaagent.server.controller;
 
+import com.javaagent.bytebuddy.AttachManager;
 import com.javaagent.bytebuddy.ByteBuddyAgent;
 import com.javaagent.server.opensearch.OpenSearchManager;
+import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.dynamic.DynamicType;
+import net.bytebuddy.matcher.ElementMatchers;
+import net.bytebuddy.utility.JavaModule;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.File;
+import java.lang.instrument.Instrumentation;
+import java.security.ProtectionDomain;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -80,7 +89,8 @@ public class ByteBuddyController {
 
             // Attach agent
             VirtualMachine vm = VirtualMachine.attach(pid);
-            vm.loadAgent(agentJar);
+            String agentArgs = request.getInstrumentation() != null ? "instrumentation=" + request.getInstrumentation() : "";
+            vm.loadAgent(agentJar, agentArgs);
             vm.detach();
 
             attachedPids.add(pid);
@@ -93,10 +103,12 @@ public class ByteBuddyController {
             );
 
         } catch (Exception e) {
+            e.printStackTrace();
             return Map.of(
                 "success", false,
                 "error", e.getMessage(),
-                "message", "Failed to attach ByteBuddy Agent"
+                "message", "Failed to attach ByteBuddy Agent",
+                "exceptionType", e.getClass().getName()
             );
         }
     }
@@ -265,19 +277,170 @@ public class ByteBuddyController {
      */
     @PostMapping("/createSpan")
     public Map<String, Object> createSpan(@RequestBody CreateSpanRequest request) {
-        String result = ByteBuddyAgent.createSpan(
-                request.getPid(),
-                request.getClassName(),
-                request.getMethodName()
-        );
+        try {
+            String pid = request.getPid();
+            String className = request.getClassName();
+            String methodName = request.getMethodName();
 
-        return Map.of(
-                "success", result.startsWith("SUCCESS"),
-                "message", result,
-                "type", "createSpan",
-                "className", request.getClassName(),
-                "methodName", request.getMethodName()
+            // Direct call to ByteBuddyAgent (agent must be attached to target JVM)
+            String result = com.javaagent.bytebuddy.ByteBuddyAgent.createSpan(pid, className, methodName);
+
+            boolean success = result.startsWith("SUCCESS");
+            return Map.of(
+                    "success", success,
+                    "message", result,
+                    "type", "createSpan",
+                    "className", className,
+                    "methodName", methodName
+            );
+
+        } catch (Exception e) {
+            return Map.of(
+                    "success", false,
+                    "message", "ERROR: Failed to create span - " + e.getMessage(),
+                    "type", "createSpan",
+                    "className", request.getClassName(),
+                    "methodName", request.getMethodName()
+            );
+        }
+    }
+
+    /** Map PID to agent HTTP port */
+    private static final Map<String, Integer> agentPorts = new ConcurrentHashMap<>();
+
+    private int getAgentPort(String pid) {
+        // Try to find the actual port by scanning
+        return agentPorts.computeIfAbsent(pid, k -> findAgentPort());
+    }
+
+    private void setAgentPort(String pid, int port) {
+        agentPorts.put(pid, port);
+    }
+
+    private int findAgentPort() {
+        // Try ports from 9999 to 10010
+        for (int port = 9999; port <= 10010; port++) {
+            try {
+                String url = "http://localhost:" + port + "/api/health";
+                String response = sendGetRequest(url);
+                if (response != null && response.contains("ByteBuddyAgent")) {
+                    System.out.println("[ByteBuddyController] Found agent on port " + port);
+                    return port;
+                }
+            } catch (Exception e) {
+                // Port not available, try next
+            }
+        }
+        return 9999; // default if not found
+    }
+
+    private String sendGetRequest(String url) throws Exception {
+        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+        conn.setRequestMethod("GET");
+        conn.setConnectTimeout(1000);
+        conn.setReadTimeout(1000);
+
+        if (conn.getResponseCode() == 200) {
+            try (java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(conn.getInputStream(), "utf-8"))) {
+                StringBuilder response = new StringBuilder();
+                String responseLine;
+                while ((responseLine = br.readLine()) != null) {
+                    response.append(responseLine.trim());
+                }
+                return response.toString();
+            }
+        }
+        return null;
+    }
+
+    private String sendPostRequest(String url, String jsonBody) throws Exception {
+        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setDoOutput(true);
+
+        try (java.io.OutputStream os = conn.getOutputStream()) {
+            byte[] input = jsonBody.getBytes("utf-8");
+            os.write(input, 0, input.length);
+        }
+
+        try (java.io.BufferedReader br = new java.io.BufferedReader(
+                new java.io.InputStreamReader(conn.getInputStream(), "utf-8"))) {
+            StringBuilder response = new StringBuilder();
+            String responseLine;
+            while ((responseLine = br.readLine()) != null) {
+                response.append(responseLine.trim());
+            }
+            return response.toString();
+        }
+    }
+
+    private String extractMessage(String json) {
+        try {
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile("\"message\"\\s*:\\s*\"([^\"]+)\"");
+            java.util.regex.Matcher m = p.matcher(json);
+            return m.find() ? m.group(1) : json;
+        } catch (Exception e) {
+            return json;
+        }
+    }
+
+    /** Track applied methods per PID */
+    private static final Map<String, Set<String>> appliedMethodsByPid = new ConcurrentHashMap<>();
+
+    private Set<String> getAppliedMethods(String pid) {
+        return appliedMethodsByPid.computeIfAbsent(pid, k -> ConcurrentHashMap.newKeySet());
+    }
+
+    private void updateAppliedMethods(String pid, Set<String> methods) {
+        appliedMethodsByPid.put(pid, methods);
+    }
+
+    /** Inject helper classes into target ClassLoader */
+    private void injectHelper(ClassLoader targetLoader) {
+        try {
+            for (String helperClassName : com.javaagent.commons.AgentConstants.HELPER_CLASSES) {
+                byte[] classBytes = loadHelperClassBytes(helperClassName);
+                if (classBytes == null) continue;
+
+                injectClassIntoLoader(targetLoader, helperClassName, classBytes);
+                System.out.println("[ByteBuddyController] Injected helper: " + helperClassName);
+            }
+        } catch (Exception e) {
+            System.err.println("[ByteBuddyController] Failed to inject helper: " + e.getMessage());
+        }
+    }
+
+    private byte[] loadHelperClassBytes(String className) {
+        try {
+            String path = className.replace('.', '/') + ".class";
+            java.io.InputStream is = ClassLoader.getSystemClassLoader().getResourceAsStream(path);
+            if (is == null) {
+                is = ByteBuddyController.class.getClassLoader().getResourceAsStream(path);
+            }
+
+            if (is == null) return null;
+
+            java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+            int bytesRead;
+            byte[] data = new byte[4096];
+            while ((bytesRead = is.read(data, 0, data.length)) != -1) {
+                buffer.write(data, 0, bytesRead);
+            }
+            is.close();
+            return buffer.toByteArray();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void injectClassIntoLoader(ClassLoader targetLoader, String className, byte[] classBytes) throws Exception {
+        java.lang.reflect.Method defineClass = ClassLoader.class.getDeclaredMethod(
+                "defineClass", String.class, byte[].class, int.class, int.class
         );
+        defineClass.setAccessible(true);
+        defineClass.invoke(targetLoader, className, classBytes, 0, classBytes.length);
     }
 
     // ============================================================
@@ -287,11 +450,14 @@ public class ByteBuddyController {
     public static class AttachRequest {
         private String pid;
         private String className;
+        private String instrumentation; // Format: className1:methodName1:type1,className2:methodName2:type2
 
         public String getPid() { return pid; }
         public void setPid(String pid) { this.pid = pid; }
         public String getClassName() { return className; }
         public void setClassName(String className) { this.className = className; }
+        public String getInstrumentation() { return instrumentation; }
+        public void setInstrumentation(String instrumentation) { this.instrumentation = instrumentation; }
     }
 
     public static class CreateSpanRequest {
@@ -319,6 +485,10 @@ public class ByteBuddyController {
     @PostMapping("/createSpanAttribute")
     public Map<String, Object> createSpanAttribute(@RequestBody CreateSpanAttributeRequest request) {
         try {
+            String pid = request.getPid();
+            String className = request.getClassName();
+            String methodName = request.getMethodName();
+
             // 1. 파라미터 매핑 생성
             java.util.Map<Integer, String> paramMapping = new java.util.LinkedHashMap<>();
             if (request.getParameters() != null) {
@@ -328,31 +498,33 @@ public class ByteBuddyController {
                 }
             }
 
-            // 2. ByteBuddyAgent로 Advice 적용 (내부에서 setParameterMapping 호출)
+            // 2. Direct call to ByteBuddyAgent (agent must be attached to target JVM)
             String result = com.javaagent.bytebuddy.ByteBuddyAgent.createSpanAttributeAdvice(
-                request.getClassName(),
-                request.getMethodName(),
+                pid,
+                className,
+                methodName,
                 paramMapping
             );
 
+            boolean success = result.startsWith("SUCCESS");
             return Map.of(
-                "success", true,
-                "message", "Span attribute created successfully",
-                "className", request.getClassName(),
-                "methodName", request.getMethodName(),
+                "success", success,
+                "message", result,
+                "type", "createSpanAttribute",
+                "className", className,
+                "methodName", methodName,
                 "parameters", request.getParameters(),
                 "paramMapping", paramMapping,
-                "attributePrefix", "arthas.attribute.",
-                "createdAttributes", java.util.List.of(
-                    "arthas.attribute." + String.join(", arthas.attribute.", request.getParameters())
-                )
+                "attributePrefix", "arthas.attribute."
             );
 
         } catch (Exception e) {
             return Map.of(
                 "success", false,
-                "error", e.getMessage(),
-                "message", "Failed to create span attribute"
+                "message", "ERROR: Failed to create span attribute - " + e.getMessage(),
+                "type", "createSpanAttribute",
+                "className", request.getClassName(),
+                "methodName", request.getMethodName()
             );
         }
     }

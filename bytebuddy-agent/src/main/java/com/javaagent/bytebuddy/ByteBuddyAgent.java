@@ -1,6 +1,7 @@
 package com.javaagent.bytebuddy;
 
 import com.javaagent.commons.AgentConstants;
+import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
@@ -30,18 +31,30 @@ public class ByteBuddyAgent {
     private static final AtomicBoolean initialized = new AtomicBoolean(false);
     private static AgentBuilder agentBuilder;
 
+    public static void premain(String args, Instrumentation inst) {
+        System.out.println("[ByteBuddy] premain called with args: " + args);
+        agentmain(args, inst);
+        processAgentArgs(args);
+    }
+
     public static void agentmain(String args, Instrumentation inst) {
         if (initialized.compareAndSet(false, true)) {
             instrumentation = inst;
 
-            // CRITICAL: Add advice JAR to System ClassLoader
-            // This ensures helper classes are visible when advice executes
+            // CRITICAL: Initialize OpenTelemetry first
             try {
-                HelperClassInjector.prepareHelpers();
+                initializeOpenTelemetry();
+                System.out.println("[ByteBuddy] OpenTelemetry initialized");
             } catch (Exception e) {
-                System.err.println("[ByteBuddy] Failed to prepare helper classes: " + e.getMessage());
+                System.err.println("[ByteBuddy] Failed to initialize OpenTelemetry: " + e.getMessage());
                 e.printStackTrace();
             }
+
+            // Note: Helper classes are shaded into this JAR and loaded via injectHelper()
+            // HelperClassInjector.prepareHelpers() is NOT needed for shaded JAR approach
+
+            // CRITICAL: Process agent arguments for auto-instrumentation
+            processAgentArgs(args);
 
             agentBuilder = new AgentBuilder.Default()
                     .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
@@ -56,6 +69,58 @@ public class ByteBuddyAgent {
                         }
                     });
             System.out.println("[ByteBuddy] Agent initialized");
+        }
+        processAgentArgs(args);
+    }
+
+    /**
+     * Initialize OpenTelemetry with OTLP exporter
+     */
+    private static void initializeOpenTelemetry() {
+        io.opentelemetry.sdk.OpenTelemetrySdk openTelemetry = io.opentelemetry.sdk.OpenTelemetrySdk.builder()
+            .setTracerProvider(io.opentelemetry.sdk.trace.SdkTracerProvider.builder()
+                .addSpanProcessor(io.opentelemetry.sdk.trace.export.SimpleSpanProcessor.create(
+                    io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter.builder()
+                        .setEndpoint("http://localhost:4317")
+                        .build()
+                ))
+                .build())
+            .buildAndRegisterGlobal();
+
+        io.opentelemetry.api.trace.Tracer tracer = openTelemetry.getTracer("java-agent-bytebuddy");
+        com.javaagent.bytebuddy.helper.SpanHelper.setTracer(tracer);
+    }
+
+    private static void processAgentArgs(String args) {
+        if (args != null && args.startsWith("instrumentation=")) {
+            // Support multiple instrumentations separated by ;
+            String[] instructions = args.substring("instrumentation=".length()).split(";");
+            for (String instruction : instructions) {
+                String[] parts = instruction.trim().split(":");
+                if (parts.length >= 3) {
+                    String className = parts[0];
+                    String methodName = parts[1];
+                    String type = parts[2];
+
+                    System.out.println("[ByteBuddy] Auto-instrumenting: " + className + "." + methodName + " (type: " + type + ")");
+
+                    if ("span".equals(type)) {
+                        String result = createSpan(null, className, methodName);
+                        System.out.println("[ByteBuddy] " + result);
+                    } else if ("spanAttribute".equals(type) && parts.length >= 4) {
+                        // Parse parameter names: userId,sessionId
+                        String[] params = parts[3].split(",");
+                        java.util.Map<Integer, String> paramMapping = new java.util.LinkedHashMap<>();
+                        int index = 0;
+                        for (String param : params) {
+                            paramMapping.put(index++, param.trim());
+                        }
+                        // Register parameter mapping in SpanAdvice (don't apply separate advice)
+                        com.javaagent.bytebuddy.advices.SpanAdvice.setParameterMapping(className, methodName, paramMapping);
+                        System.out.println("[ByteBuddy] Parameter mapping registered for " + className + "." + methodName);
+                    }
+                }
+            }
         }
     }
 
@@ -81,37 +146,56 @@ public class ByteBuddyAgent {
             }
 
             String methodKey = className + "." + methodName;
-            if (appliedMethods.contains(methodKey)) {
-                return "SUCCESS: Span already created for " + methodKey;
-            }
-
-            new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
-                .with(AgentBuilder.InitializationStrategy.NoOp.INSTANCE)
-                .with(AgentBuilder.TypeStrategy.Default.REDEFINE)
-                .ignore(ElementMatchers.none())
-                .type(ElementMatchers.named(className))
-                .transform(new AgentBuilder.Transformer() {
-                    @Override
-                    public DynamicType.Builder<?> transform(DynamicType.Builder<?> builder,
-                                                           TypeDescription typeDescription,
-                                                           ClassLoader classLoader,
-                                                           JavaModule module,
-                                                           ProtectionDomain protectionDomain) {
-                        return builder.visit(
-                            Advice.to(com.javaagent.bytebuddy.advices.SpanAdvice.class)
-                                .on(ElementMatchers.named(methodName)
-                                        .and(ElementMatchers.isMethod())
-                                        .and(ElementMatchers.not(ElementMatchers.isStatic())))
-                        );
-                    }
-                })
-                .installOn(instrumentation);
-
+            System.out.println("[ByteBuddy] Applying advice to " + methodKey);
             appliedMethods.add(methodKey);
+
+            // CRITICAL: Load target class first
+            Class<?> targetClass = Class.forName(className);
+            ClassLoader targetClassLoader = targetClass.getClassLoader();
+            System.out.println("[ByteBuddy] Target class loaded from: " + targetClassLoader);
+
+            // CRITICAL: Inject SpanAdvice into target ClassLoader
+            injectHelper(targetClassLoader);
+
+            // Load Advice class from target's ClassLoader (now available after injection)
+            Class<?> adviceClass = targetClassLoader.loadClass("com.javaagent.bytebuddy.advices.SpanAdvice");
+            System.out.println("[ByteBuddy] Advice class loaded: " + adviceClass + " (loader: " + adviceClass.getClassLoader() + ")");
+
+            // Create bytecode using ByteBuddy with Advice from same ClassLoader
+            byte[] transformedBytes = new ByteBuddy()
+                .redefine(targetClass)
+                .visit(Advice.to(adviceClass)
+                    .on(ElementMatchers.named(methodName)
+                            .and(ElementMatchers.isMethod())
+                            .and(ElementMatchers.not(ElementMatchers.isStatic()))))
+                .make()
+                .getBytes();
+
+            System.out.println("[ByteBuddy] Transformed bytecode created, size: " + transformedBytes.length);
+
+            // Use retransformation to apply the changes
+            java.lang.instrument.ClassFileTransformer transformer = new java.lang.instrument.ClassFileTransformer() {
+                @Override
+                public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
+                                      java.security.ProtectionDomain protectionDomain, byte[] classfileBuffer) {
+                    if (className.replace('/', '.').equals(targetClass.getName())) {
+                        System.out.println("[ByteBuddy] *** RETRANSFORMING: " + className + " ***");
+                        return transformedBytes;
+                    }
+                    return null;
+                }
+            };
+
+            instrumentation.addTransformer(transformer, true);
+            instrumentation.retransformClasses(targetClass);
+            instrumentation.removeTransformer(transformer);
+
+            System.out.println("[ByteBuddy] *** ADVICE APPLIED TO " + methodKey + " ***");
             return "SUCCESS: Created span for " + methodKey;
 
         } catch (Exception e) {
+            System.err.println("[ByteBuddy] Error: " + e.getMessage());
+            e.printStackTrace();
             return "ERROR: Failed to create span - " + e.getMessage();
         }
     }
@@ -146,6 +230,7 @@ public class ByteBuddyAgent {
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .with(AgentBuilder.InitializationStrategy.NoOp.INSTANCE)
                 .with(AgentBuilder.TypeStrategy.Default.REDEFINE)
+                .with(AgentBuilder.DescriptionStrategy.Default.POOL_ONLY)  // Preserve debugging info including parameter names
                 .ignore(ElementMatchers.none())
                 .type(ElementMatchers.named(className))
                 .transform(new AgentBuilder.Transformer() {
@@ -310,6 +395,7 @@ public class ByteBuddyAgent {
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .with(AgentBuilder.InitializationStrategy.NoOp.INSTANCE)
                 .with(AgentBuilder.TypeStrategy.Default.REDEFINE)
+                .with(AgentBuilder.DescriptionStrategy.Default.POOL_ONLY)  // Preserve debugging info including parameter names
                 .ignore(ElementMatchers.none())
                 .type(ElementMatchers.named(className))
                 .transform(new AgentBuilder.Transformer() {
@@ -367,6 +453,7 @@ public class ByteBuddyAgent {
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .with(AgentBuilder.InitializationStrategy.NoOp.INSTANCE)
                 .with(AgentBuilder.TypeStrategy.Default.REDEFINE)
+                .with(AgentBuilder.DescriptionStrategy.Default.POOL_ONLY)  // Preserve debugging info including parameter names
                 .ignore(ElementMatchers.none())
                 .type(ElementMatchers.named(className))
                 .transform(new AgentBuilder.Transformer() {
@@ -431,6 +518,7 @@ public class ByteBuddyAgent {
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .with(AgentBuilder.InitializationStrategy.NoOp.INSTANCE)
                 .with(AgentBuilder.TypeStrategy.Default.REDEFINE)
+                .with(AgentBuilder.DescriptionStrategy.Default.POOL_ONLY)  // Preserve debugging info including parameter names
                 .ignore(ElementMatchers.none())
                 .type(ElementMatchers.named(className))
                 .transform(new AgentBuilder.Transformer() {

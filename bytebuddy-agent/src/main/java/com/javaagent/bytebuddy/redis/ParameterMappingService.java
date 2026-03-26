@@ -15,6 +15,7 @@ import java.util.Map;
  * Key format: "paramMapping:{className}:{methodName}"
  * Value: JSON string of {"0": "userId", "1": "sessionId"}
  */
+@SuppressWarnings("unchecked")
 public class ParameterMappingService {
 
     public static JedisPool jedisPool;
