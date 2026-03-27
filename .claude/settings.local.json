@@ -207,7 +207,32 @@
       "Bash(jar -tf ~/.m2/repository/io/opentelemetry/opentelemetry-sdk-trace/1.38.0/opentelemetry-sdk-trace-1.38.0.jar)",
       "Bash(jar -tf /c/Users/EUROPE/.m2/repository/io/opentelemetry/opentelemetry-sdk/1.38.0/opentelemetry-sdk-1.38.0.jar)",
       "Bash(find /c/Users/EUROPE/agent -name *LINK* -o -name *20260327*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git reset:*)",
+      "Bash(./run-all.sh)",
+      "Bash(xargs -I {} kill -9 {})",
+      "Bash(findstr \":8081\")",
+      "Bash(findstr \"LISTENING\")",
+      "Bash(findstr \":8082\")",
+      "Bash(findstr \":8080\")",
+      "Bash(findstr -E \":8081|:8082\")",
+      "Bash(findstr \"8081\")",
+      "Bash(findstr \"8082\")",
+      "Bash(findstr -i \"java\")",
+      "Bash(cmd /c \"start /B mvn spring-boot:run\")",
+      "Bash(rm -f agent-server/bytebuddy-*.jar)",
+      "Bash(rm -f test-services/*/bytebuddy-*.jar)",
+      "Bash(cp bytebuddy-agent/target/bytebuddy-agent-1.0.0.jar test-services/test2-service/)",
+      "Bash(cmd /c \"start /B cmd /c mvn spring-boot:run > test2.log 2>&1\")",
+      "Bash(cmd /c \"start /B cmd /c mvn spring-boot:run > test1.log 2>&1\")",
+      "Bash(powershell -Command \"Start-Process -NoNewWindow -FilePath 'mvn' -ArgumentList 'spring-boot:run' -WorkingDirectory 'C:\\\\Users\\\\EUROPE\\\\agent\\\\test-services\\\\test1-service' -RedirectStandardOutput 'C:\\\\tmp\\\\test1-out.log' -RedirectStandardError 'C:\\\\tmp\\\\test1-err.log'\")",
+      "Bash(powershell -Command \"Start-Process -NoNewWindow -FilePath 'mvn' -ArgumentList 'spring-boot:run' -WorkingDirectory 'C:\\\\Users\\\\EUROPE\\\\agent\\\\test-services\\\\test2-service' -RedirectStandardOutput 'C:\\\\tmp\\\\test2-out.log' -RedirectStandardError 'C:\\\\tmp\\\\test2-err.log'\")",
+      "Bash(findstr java:*)",
+      "Bash(findstr \":8081 :8082\")",
+      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 8081,8082 -State Listen | ForEach-Object { Stop-Process -Id $_OwningProcess -Force }\")",
+      "Bash(curl -s -X POST http://localhost:9200/jaeger-span-*/_search -H 'Content-Type: application/json' -d '{:*)",
+      "Bash(python3 -c \"import sys, json; data=json.load\\(sys.stdin\\); [print\\(f\\\\nTrace: {h[''''_source''''][''''traceID''''][:16]}...\\\\nSpan: {h[''''_source''''][''''spanID'''']}\\\\nRefs: {h[''''_source''''].get\\(''''references'''', ''''None''''\\)}\\\\nTags: {[t[''''key'''']+''''=''''+t.get\\(''''value'''',''''''''\\) for t in h[''''_source''''][''''tags''''] if t[''''key'''']==''''arthas.attribute.userId'''']}\\) for h in data[''''hits''''][''''hits'''']]\")",
+      "Bash(python3 -c \":*)"
     ]
   }
 }
