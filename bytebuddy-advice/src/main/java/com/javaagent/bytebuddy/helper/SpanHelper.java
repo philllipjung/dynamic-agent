@@ -12,6 +12,9 @@ public class SpanHelper {
 
     private static Tracer tracer = null;
 
+    // 🆕 스레드명 관리
+    private String originalThreadName;
+
     public static void setTracer(Tracer t) {
         tracer = t;
     }
@@ -149,6 +152,24 @@ public class SpanHelper {
 
     public boolean isValid() {
         return span != null;
+    }
+
+    // ============================================================
+    // 🆕 Thread Name Management
+    // ============================================================
+
+    /**
+     * 원래 스레드명 설정 (나중에 복원용)
+     */
+    public void setOriginalThreadName(String name) {
+        this.originalThreadName = name;
+    }
+
+    /**
+     * 저장된 원래 스레드명 반환
+     */
+    public String getOriginalThreadName() {
+        return originalThreadName;
     }
 
     // ============================================================

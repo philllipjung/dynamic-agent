@@ -98,6 +98,14 @@
             <artifactId>elasticsearch-rest-client</artifactId>
             <version>8.10.0</version>
         </dependency>
+
+        <!-- Servlet API for Filter instrumentation -->
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <version>4.0.1</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>

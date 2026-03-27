@@ -65,6 +65,13 @@
             <version>6.0.0</version>
             <scope>provided</scope>
         </dependency>
+        <!-- javax.servlet for Spring Boot 2.x compatibility -->
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <version>4.0.1</version>
+            <scope>provided</scope>
+        </dependency>
         <!-- Jackson for JSON processing in EventHelper -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

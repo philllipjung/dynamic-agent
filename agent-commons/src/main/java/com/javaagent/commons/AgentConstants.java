@@ -38,12 +38,14 @@ public final class AgentConstants {
     public static final String PROP_OTEL_SERVICE_NAME = "opentelemetry.service.name";
     public static final String PROP_JAEGER_ENDPOINT = "opentelemetry.exporter.jaeger.endpoint";
 
-    // ByteBuddy Helper Classes
+    // ByteBuddy Helper Classes (only helpers that need injection, NOT Advice classes)
     public static final String[] HELPER_CLASSES = {
-        "com.javaagent.bytebuddy.advices.SpanAdvice",
         "com.javaagent.bytebuddy.helper.SpanAttributeHelper",
         "com.javaagent.bytebuddy.helper.SpanHelper",
-        "com.javaagent.bytebuddy.helper.JaegerLinkLookupService"
+        "com.javaagent.bytebuddy.helper.JaegerLinkLookupService",
+        "com.javaagent.bytebuddy.helper.ThreadNameHelper",
+        "com.javaagent.bytebuddy.advices.KernelAdvice",
+        "com.javaagent.bytebuddy.helper.KernelHelper"
     };
 
     // Advice JAR name (for dynamic loading scenarios)

@@ -611,6 +611,52 @@ public class ByteBuddyController {
     // ============================================================
 
     /**
+     * Instrument all Spring Filters to capture HTTP request headers and body
+     * POST /api/bytebuddy/instrumentFilters
+     *
+     * This will automatically find and instrument all javax.servlet.Filter implementations
+     * to print HTTP request headers and body using KernelAdvice
+     */
+    @PostMapping("/instrumentFilters")
+    public Map<String, Object> instrumentFilters() {
+        try {
+            // Find agent HTTP server port for first attached PID
+            if (attachedPids.isEmpty()) {
+                return Map.of(
+                    "success", false,
+                    "error", "No attached PIDs. Please attach to a JVM first."
+                );
+            }
+
+            String pid = attachedPids.iterator().next();
+            int agentPort = getAgentPort(pid);
+
+            // Call agent's HTTP server
+            String url = "http://localhost:" + agentPort + "/api/instrumentFilters";
+            String response = sendPostRequest(url, "{}");
+
+            return Map.of(
+                "success", true,
+                "message", "Filter instrumentation request sent to PID " + pid,
+                "agentResponse", response,
+                "features", List.of(
+                    "Print HTTP request headers",
+                    "Print HTTP request body",
+                    "Works with all Spring Filters",
+                    "No code changes required"
+                )
+            );
+
+        } catch (Exception e) {
+            return Map.of(
+                "success", false,
+                "error", e.getMessage(),
+                "message", "Failed to instrument filters"
+            );
+        }
+    }
+
+    /**
      * Create Kernel Advice for kernel-level tracing
      * POST /api/bytebuddy/createKernelAdvice
      * Body: {
@@ -674,5 +720,162 @@ public class ByteBuddyController {
         public void setClassName(String className) { this.className = className; }
         public String getMethodName() { return methodName; }
         public void setMethodName(String methodName) { this.methodName = methodName; }
+    }
+
+    // ============================================================
+    // Section 5: Thread Name Verification (/proc)
+    // ============================================================
+
+    /**
+     * Get thread information from /proc filesystem
+     * GET /api/bytebuddy/threadInfo
+     *
+     * Returns information about all active threads including:
+     * - Java thread name (Thread.getName())
+     * - Native thread name from /proc/<pid>/task/<tid>/comm (Linux)
+     * - Thread ID (TID)
+     * - Thread state
+     *
+     * This verifies that Thread.setName() actually updates the kernel thread name
+     */
+    @GetMapping("/threadInfo")
+    public Map<String, Object> getThreadInfo() {
+        try {
+            // Get current process PID
+            String processPid = getProcessPid();
+            String osName = System.getProperty("os.name").toLowerCase();
+
+            // Get all active threads
+            Set<Thread> threads = Thread.getAllStackTraces().keySet();
+
+            java.util.List<Map<String, Object>> threadInfoList = new java.util.ArrayList<>();
+
+            for (Thread thread : threads) {
+                Map<String, Object> info = new java.util.HashMap<>();
+                long threadId = thread.getId();
+                String javaThreadName = thread.getName();
+                String threadState = thread.getState().toString();
+                String nativeThreadName = null;
+                String commFilePath = null;
+
+                // On Linux, read from /proc/<pid>/task/<tid>/comm
+                if (osName.contains("linux")) {
+                    commFilePath = "/proc/" + processPid + "/task/" + threadId + "/comm";
+                    nativeThreadName = readNativeThreadName(commFilePath);
+                } else if (osName.contains("windows")) {
+                    // On Windows, /proc doesn't exist
+                    nativeThreadName = "N/A (Windows)";
+                    commFilePath = "N/A (Windows)";
+                } else if (osName.contains("mac")) {
+                    // macOS doesn't have /proc either
+                    nativeThreadName = "N/A (macOS)";
+                    commFilePath = "N/A (macOS)";
+                }
+
+                info.put("threadId", threadId);
+                info.put("javaThreadName", javaThreadName);
+                info.put("nativeThreadName", nativeThreadName);
+                info.put("commFilePath", commFilePath);
+                info.put("threadState", threadState);
+                info.put("isRenamed", isThreadNameCustom(javaThreadName));
+                info.put("match", javaThreadName.equals(nativeThreadName));
+
+                threadInfoList.add(info);
+            }
+
+            return Map.of(
+                "success", true,
+                "processPid", processPid,
+                "os", osName,
+                "totalThreads", threads.size(),
+                "threads", threadInfoList,
+                "note", "On Linux, nativeThreadName is read from /proc/<pid>/task/<tid>/comm"
+            );
+
+        } catch (Exception e) {
+            return Map.of(
+                "success", false,
+                "error", e.getMessage(),
+                "message", "Failed to get thread info"
+            );
+        }
+    }
+
+    /**
+     * Get current process PID
+     */
+    private String getProcessPid() {
+        try {
+            // Try to get PID from runtime bean (works on most JVMs)
+            String jvmName = java.lang.management.ManagementFactory.getRuntimeMXBean().getName();
+            if (jvmName != null && jvmName.contains("@")) {
+                return jvmName.split("@")[0];
+            }
+
+            // Fallback: environment variable
+            String pid = System.getenv().get("PID");
+            if (pid != null) {
+                return pid;
+            }
+
+            return "unknown";
+        } catch (Exception e) {
+            return "unknown";
+        }
+    }
+
+    /**
+     * Read native thread name from /proc/<pid>/task/<tid>/comm
+     */
+    private String readNativeThreadName(String commFilePath) {
+        try {
+            java.io.File commFile = new java.io.File(commFilePath);
+            if (!commFile.exists()) {
+                return "FILE_NOT_FOUND";
+            }
+
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.FileReader(commFile))) {
+                String name = reader.readLine();
+                return name != null ? name.trim() : "";
+            }
+        } catch (Exception e) {
+            return "ERROR: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Check if thread name has been customized (not a default pattern)
+     */
+    private boolean isThreadNameCustom(String threadName) {
+        // Default thread patterns
+        if (threadName == null) return false;
+
+        String[] defaultPatterns = {
+            "reactor-http-epoll-",
+            "reactor-http-nio-",
+            "parallel-",
+            "boundedElastic-",
+            "scheduling-",
+            "ForkJoinPool.",
+            "main",
+            "Reference Handler",
+            "Finalizer",
+            "Signal Dispatcher",
+            "Common-Cleaner"
+        };
+
+        for (String pattern : defaultPatterns) {
+            if (threadName.startsWith(pattern)) {
+                return false;
+            }
+        }
+
+        // If it looks like our custom format (e.g., "3a5b7c12d456ABCTSRV12345")
+        if (threadName.matches("^[a-f0-9]{13}[A-Z]{3}\\d{4}$")) {
+            return true;
+        }
+
+        return false;
     }
 }

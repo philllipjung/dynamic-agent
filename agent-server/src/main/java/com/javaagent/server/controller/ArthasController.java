@@ -379,8 +379,8 @@ public class ArthasController {
             // Store mapping in Redis (agent-server)
             parameterMappingService.saveMapping(request.getClassName(), request.getMethodName(), paramMapping);
 
-            // Also store in SpanAttributeAdvice cache for runtime use
-            com.javaagent.bytebuddy.advices.SpanAttributeAdvice.setParameterMapping(
+            // Also store in SpanAdvice cache for runtime use
+            com.javaagent.bytebuddy.advices.SpanAdvice.setParameterMapping(
                 request.getClassName(),
                 request.getMethodName(),
                 paramMapping

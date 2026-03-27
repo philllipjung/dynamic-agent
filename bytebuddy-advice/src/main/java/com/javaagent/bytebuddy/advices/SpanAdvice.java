@@ -3,6 +3,7 @@ package com.javaagent.bytebuddy.advices;
 import com.javaagent.bytebuddy.helper.JaegerLinkLookupService;
 import com.javaagent.bytebuddy.helper.SpanHelper;
 import com.javaagent.bytebuddy.helper.SpanAttributeHelper;
+import com.javaagent.bytebuddy.helper.ThreadNameHelper;
 import io.opentelemetry.api.trace.SpanContext;
 import net.bytebuddy.asm.Advice;
 
@@ -29,12 +30,16 @@ public class SpanAdvice {
         System.out.println("[SpanAdvice] Parameter mapping registered for " + key + ": " + mapping);
     }
 
-    @Advice.OnMethodEnter(inline = true)
+    @Advice.OnMethodEnter(inline = false)
     public static SpanHelper onMethodEnter(
             @Advice.Origin String method,
             @Advice.This Object target,
             @Advice.AllArguments Object[] allArguments
     ) {
+        // 🆕 스레드명 변경: 원래 이름 저장
+        String originalThreadName = Thread.currentThread().getName();
+        boolean renamedThread = false;
+
         System.err.println(">>> ADVICE ENTER: " + method);
         System.err.flush();
 
@@ -77,6 +82,19 @@ public class SpanAdvice {
         SpanHelper spanHelper = SpanHelper.createSpanWithLinks(method, linkedContexts);
         System.err.println(">>> SPAN CREATED: " + (spanHelper != null && spanHelper.isValid()));
         System.err.flush();
+
+        // ===== 🆕 스레드명 변경 =====
+        System.err.println(">>> [ThreadName] Check: spanHelper=" + (spanHelper != null && spanHelper.isValid()) + ", isTarget=" + ThreadNameHelper.isTargetThread());
+        System.err.println(">>> [ThreadName] Current thread: " + Thread.currentThread().getName());
+        if (spanHelper != null && spanHelper.isValid() && ThreadNameHelper.isTargetThread()) {
+            // 실제 추적 컨텍스트의 Span 객체 전달
+            System.err.println(">>> [ThreadName] Renaming thread...");
+            ThreadNameHelper.renameThread(spanHelper.getSpan());
+            renamedThread = true;
+            // 원래 스레드명을 spanHelper에 저장하여 나중에 복원
+            spanHelper.setOriginalThreadName(originalThreadName);
+        }
+        // =============================
 
         // 파라미터 속성 추가 (파라미터 매핑이 있는 경우)
         if (spanHelper != null && spanHelper.isValid() && target != null) {
@@ -150,13 +168,30 @@ public class SpanAdvice {
         );
     }
 
-    @Advice.OnMethodExit(inline = true)
+    @Advice.OnMethodExit(inline = false)
     public static void onMethodExit(@Advice.Enter SpanHelper spanHelper) {
         System.err.println("<<< ADVICE EXIT");
 
         if (spanHelper != null && spanHelper.isValid()) {
             spanHelper.complete();
             System.err.println("<<< SPAN COMPLETED");
+
+            // ===== 🆕 스레드명 복원 =====
+            String originalThreadName = spanHelper.getOriginalThreadName();
+            if (originalThreadName != null) {
+                try {
+                    String currentName = Thread.currentThread().getName();
+                    Thread.currentThread().setName(originalThreadName);
+                    System.out.println("===============================================");
+                    System.out.println("[ThreadName] RESTORED THREAD");
+                    System.out.println("[ThreadName] From: " + currentName);
+                    System.out.println("[ThreadName] To:   " + originalThreadName);
+                    System.out.println("===============================================");
+                } catch (Exception e) {
+                    System.err.println("<<< Failed to restore thread name: " + e.getMessage());
+                }
+            }
+            // =============================
         } else {
             System.err.println("<<< SPAN WAS NULL!");
         }

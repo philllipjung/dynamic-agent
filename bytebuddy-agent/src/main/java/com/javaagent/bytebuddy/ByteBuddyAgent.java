@@ -70,7 +70,141 @@ public class ByteBuddyAgent {
                     });
             System.out.println("[ByteBuddy] Agent initialized");
         }
+
+        // Always try to instrument filters (not just on first initialization)
+        try {
+            System.err.println("[ByteBuddy] Auto-instrumenting filters...");
+            String result = instrumentFilters();
+            System.err.println("[ByteBuddy] Auto-instrument result: " + result);
+        } catch (Exception e) {
+            System.err.println("[ByteBuddy] Failed to auto-instrument filters: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        // Start HTTP server for remote control (every time agentmain is called)
+        startHttpServer();
+
         processAgentArgs(args);
+    }
+
+    /**
+     * Start simple HTTP server for remote control
+     */
+    private static void startHttpServer() {
+        new Thread(() -> {
+            try {
+                int port = findAvailablePort(9999, 10010);
+                com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+                    new java.net.InetSocketAddress(port), 0);
+
+                // Register handlers
+                server.createContext("/api/health", exchange -> {
+                    String response = "{\"status\":\"ok\",\"agent\":\"ByteBuddyAgent\"}";
+                    exchange.sendResponseHeaders(200, response.length());
+                    exchange.getResponseBody().write(response.getBytes());
+                    exchange.close();
+                });
+
+                server.createContext("/api/instrumentFilters", exchange -> {
+                    try {
+                        String result = instrumentFilters();
+                        String response = "{\"success\":" + result.startsWith("SUCCESS") +
+                            ",\"message\":\"" + result.replace("\"", "'") + "\"}";
+                        exchange.sendResponseHeaders(200, response.length());
+                        exchange.getResponseBody().write(response.getBytes());
+                    } catch (Exception e) {
+                        String error = "{\"success\":false,\"error\":\"" + e.getMessage() + "\"}";
+                        exchange.sendResponseHeaders(500, error.length());
+                        exchange.getResponseBody().write(error.getBytes());
+                    }
+                    exchange.close();
+                });
+
+                server.createContext("/api/createSpan", exchange -> {
+                    try {
+                        // Read request body
+                        java.io.BufferedReader reader = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(exchange.getRequestBody()));
+                        StringBuilder body = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            body.append(line);
+                        }
+
+                        // Parse JSON (simple parsing)
+                        String className = extractJsonValue(body.toString(), "className");
+                        String methodName = extractJsonValue(body.toString(), "methodName");
+
+                        String result = createSpan(null, className, methodName);
+                        String response = "{\"success\":" + result.startsWith("SUCCESS") +
+                            ",\"message\":\"" + result.replace("\"", "'") + "\"}";
+                        exchange.sendResponseHeaders(200, response.length());
+                        exchange.getResponseBody().write(response.getBytes());
+                    } catch (Exception e) {
+                        String error = "{\"success\":false,\"error\":\"" + e.getMessage() + "\"}";
+                        exchange.sendResponseHeaders(500, error.length());
+                        exchange.getResponseBody().write(error.getBytes());
+                    }
+                    exchange.close();
+                });
+
+                // Add createKernelAdvice handler
+                server.createContext("/api/createKernelAdvice", exchange -> {
+                    try {
+                        // Read request body
+                        java.io.BufferedReader reader = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(exchange.getRequestBody()));
+                        StringBuilder body = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            body.append(line);
+                        }
+
+                        // Parse JSON (simple parsing)
+                        String className = extractJsonValue(body.toString(), "className");
+                        String methodName = extractJsonValue(body.toString(), "methodName");
+
+                        String result = createKernelAdvice(className, methodName);
+                        String response = "{\"success\":" + result.startsWith("SUCCESS") +
+                            ",\"message\":\"" + result.replace("\"", "'") + "\"}";
+                        exchange.sendResponseHeaders(200, response.length());
+                        exchange.getResponseBody().write(response.getBytes());
+                    } catch (Exception e) {
+                        String error = "{\"success\":false,\"error\":\"" + e.getMessage() + "\"}";
+                        exchange.sendResponseHeaders(500, error.length());
+                        exchange.getResponseBody().write(error.getBytes());
+                    }
+                    exchange.close();
+                });
+
+                server.setExecutor(null);
+                server.start();
+                System.out.println("[ByteBuddy] HTTP server started on port " + port);
+            } catch (Exception e) {
+                System.err.println("[ByteBuddy] Failed to start HTTP server: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }, "ByteBuddy-HTTP-Server").start();
+    }
+
+    private static int findAvailablePort(int start, int end) {
+        for (int port = start; port <= end; port++) {
+            try {
+                new java.net.Socket("localhost", port).close();
+                // Port is in use, try next
+            } catch (Exception e) {
+                // Port is available
+                return port;
+            }
+        }
+        return start; // fallback
+    }
+
+    private static String extractJsonValue(String json, String key) {
+        String pattern = "\"" + key + "\"\\s*:\\s*\"([^\"]+)\"";
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
+        java.util.regex.Matcher m = p.matcher(json);
+        return m.find() ? m.group(1) : null;
     }
 
     /**
@@ -118,6 +252,10 @@ public class ByteBuddyAgent {
                         // Register parameter mapping in SpanAdvice
                         SpanAdvice.setParameterMapping(className, methodName, paramMapping);
                         System.out.println("[ByteBuddy] Parameter mapping registered for " + className + "." + methodName);
+
+                        // CRITICAL: Also apply instrumentation (createSpan) for spanAttribute type
+                        String result = createSpan(null, className, methodName);
+                        System.out.println("[ByteBuddy] " + result);
                     }
                 }
             }
@@ -215,6 +353,15 @@ public class ByteBuddyAgent {
 
         try {
             for (String helperClassName : AgentConstants.HELPER_CLASSES) {
+                // Check if class is already loaded in target ClassLoader
+                try {
+                    targetLoader.loadClass(helperClassName);
+                    System.out.println("[ByteBuddy] Helper already loaded: " + helperClassName + ", skipping injection");
+                    continue;
+                } catch (ClassNotFoundException e) {
+                    // Class not loaded, proceed with injection
+                }
+
                 // Load helper class bytecode from System ClassLoader
                 byte[] classBytes = loadHelperClassBytes(helperClassName);
                 if (classBytes == null) {
@@ -279,6 +426,378 @@ public class ByteBuddyAgent {
         );
         defineClass.setAccessible(true);
         defineClass.invoke(targetLoader, className, classBytes, 0, classBytes.length);
+    }
+
+    /**
+     * Instrument Spring Filter classes to capture HTTP request headers and body
+     * Uses KernelAdvice to print request information
+     *
+     * @return Result message
+     */
+    public static String instrumentFilters() {
+        try {
+            if (instrumentation == null) {
+                return "ERROR: Agent not initialized. Please attach to JVM first.";
+            }
+
+            System.err.println("[ByteBuddy] Instrumenting Spring Filters...");
+
+            // Debug: Print total class count
+            Class<?>[] allClasses = instrumentation.getAllLoadedClasses();
+            System.err.println("[ByteBuddy] Total loaded classes: " + allClasses.length);
+
+            // Check if jakarta.servlet.Filter is available
+            boolean jakartaAvailable = false;
+            try {
+                Class.forName("jakarta.servlet.Filter");
+                jakartaAvailable = true;
+                System.err.println("[ByteBuddy] jakarta.servlet.Filter is available");
+            } catch (ClassNotFoundException e) {
+                System.err.println("[ByteBuddy] jakarta.servlet.Filter is NOT available");
+            }
+
+            int filterCount = 0;
+            int checkedCount = 0;
+
+            // Find all Filter classes and related classes
+            for (Class<?> clazz : allClasses) {
+                checkedCount++;
+
+                // Debug: Print every 1000th class to see progress
+                if (checkedCount % 1000 == 0) {
+                    System.err.println("[ByteBuddy] Checked " + checkedCount + " classes so far...");
+                }
+
+                try {
+                    String className = clazz.getName();
+
+                    // Check for javax.servlet.Filter
+                    if (javax.servlet.Filter.class.isAssignableFrom(clazz)) {
+                        System.err.println("[ByteBuddy] Found javax.servlet.Filter: " + className);
+                        filterCount++;
+                        try {
+                            instrumentSingleFilter(clazz);
+                        } catch (Exception e) {
+                            System.err.println("[ByteBuddy] Failed to instrument " + className + ": " + e.getMessage());
+                        }
+                        continue;
+                    }
+
+                    // Check for jakarta.servlet.Filter (Spring Boot 3.x)
+                    if (jakartaAvailable) {
+                        Class<?> jakartaFilter = Class.forName("jakarta.servlet.Filter");
+                        if (jakartaFilter.isAssignableFrom(clazz)) {
+                            System.err.println("[ByteBuddy] Found jakarta.servlet.Filter: " + className);
+                            filterCount++;
+                            try {
+                                instrumentSingleFilter(clazz);
+                            } catch (Exception e) {
+                                System.err.println("[ByteBuddy] Failed to instrument " + className + ": " + e.getMessage());
+                            }
+                            continue;
+                        }
+                    }
+
+                    // Check for Spring Filter classes (OncePerRequestFilter, etc.)
+                    if (className.contains("Filter") &&
+                        (className.contains("org.springframework.web.filter") ||
+                         className.contains("org.apache.catalina.filters") ||
+                         className.contains("com.javaagent.server.filter"))) {
+                        System.err.println("[ByteBuddy] Found potential Filter class: " + className);
+                        filterCount++;
+                        try {
+                            instrumentSingleFilter(clazz);
+                        } catch (Exception e) {
+                            System.err.println("[ByteBuddy] Failed to instrument " + className + ": " + e.getMessage());
+                        }
+                        continue;
+                    }
+
+                } catch (ClassNotFoundException e) {
+                    // Class not available, skip
+                } catch (NoClassDefFoundError e) {
+                    // Class not available, skip
+                }
+            }
+
+            System.err.println("[ByteBuddy] Checked " + checkedCount + " classes total");
+            System.err.println("[ByteBuddy] Total filters found: " + filterCount);
+
+            if (filterCount == 0) {
+                // Debug: Search for Filter-related classes
+                System.err.println("[ByteBuddy] Searching for Filter-related classes...");
+                int foundFilter = 0;
+                for (Class<?> clazz : allClasses) {
+                    String className = clazz.getName();
+                    if (className.toLowerCase().contains("filter")) {
+                        System.err.println("[ByteBuddy]   - " + className);
+                        foundFilter++;
+                        if (foundFilter >= 30) break; // Limit output
+                    }
+                }
+                return "WARNING: No filters found to instrument";
+            }
+
+            return "SUCCESS: Filter instrumentation completed (" + filterCount + " filters)";
+
+        } catch (Exception e) {
+            System.err.println("[ByteBuddy] Error: " + e.getMessage());
+            e.printStackTrace();
+            return "ERROR: Failed to instrument filters - " + e.getMessage();
+        }
+    }
+
+    /**
+     * Instrument a single Filter class
+     */
+    private static void instrumentSingleFilter(Class<?> filterClass) throws Exception {
+        String className = filterClass.getName();
+        ClassLoader targetClassLoader = filterClass.getClassLoader();
+
+        System.out.println("[ByteBuddy] Instrumenting filter: " + className);
+
+        // Inject helper classes
+        injectHelper(targetClassLoader);
+
+        // Load KernelAdvice class
+        Class<?> adviceClass = targetClassLoader.loadClass("com.javaagent.bytebuddy.advices.KernelAdvice");
+        System.out.println("[ByteBuddy] KernelAdvice loaded: " + adviceClass);
+
+        // Create bytecode using ByteBuddy
+        // Match doFilter(ServletRequest, ServletResponse, FilterChain) - takes 3 arguments
+        byte[] transformedBytes = new ByteBuddy()
+            .redefine(filterClass)
+            .visit(Advice.to(adviceClass)
+                .on(ElementMatchers.named("doFilter")
+                        .and(ElementMatchers.isMethod())
+                        .and(ElementMatchers.not(ElementMatchers.isStatic()))
+                        .and(ElementMatchers.takesArguments(3))))
+            .make()
+            .getBytes();
+
+        // Apply transformation
+        java.lang.instrument.ClassFileTransformer transformer = new java.lang.instrument.ClassFileTransformer() {
+            @Override
+            public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
+                                  java.security.ProtectionDomain protectionDomain, byte[] classfileBuffer) {
+                if (className.replace('/', '.').equals(filterClass.getName())) {
+                    System.out.println("[ByteBuddy] *** RETRANSFORMING FILTER: " + className + " ***");
+                    return transformedBytes;
+                }
+                return null;
+            }
+        };
+
+        instrumentation.addTransformer(transformer, true);
+        instrumentation.retransformClasses(filterClass);
+        instrumentation.removeTransformer(transformer);
+
+        System.out.println("[ByteBuddy] *** KERNEL ADVICE APPLIED TO " + className + " ***");
+    }
+
+    /**
+     * Create span attribute advice for a method
+     * Captures method parameters as OpenTelemetry span attributes
+     *
+     * @param pid Process ID (not used, for compatibility)
+     * @param className Target class name
+     * @param methodName Target method name
+     * @param paramMapping Parameter index to name mapping
+     * @return Result message
+     */
+    public static String createSpanAttributeAdvice(String pid, String className, String methodName,
+                                                   java.util.Map<Integer, String> paramMapping) {
+        try {
+            if (instrumentation == null) {
+                return "ERROR: Agent not initialized. Please attach to JVM first.";
+            }
+
+            String methodKey = className + "." + methodName;
+            System.out.println("[ByteBuddy] Applying span attribute advice to " + methodKey);
+
+            // Register parameter mapping in SpanAdvice
+            SpanAdvice.setParameterMapping(className, methodName, paramMapping);
+
+            // Load target class
+            Class<?> targetClass = Class.forName(className);
+            ClassLoader targetClassLoader = targetClass.getClassLoader();
+
+            // Inject helper classes
+            injectHelper(targetClassLoader);
+
+            // Load SpanAdvice class
+            Class<?> adviceClass = targetClassLoader.loadClass("com.javaagent.bytebuddy.advices.SpanAdvice");
+
+            // Create bytecode using ByteBuddy
+            byte[] transformedBytes = new ByteBuddy()
+                .redefine(targetClass)
+                .visit(Advice.to(adviceClass)
+                    .on(ElementMatchers.named(methodName)
+                            .and(ElementMatchers.isMethod())
+                            .and(ElementMatchers.not(ElementMatchers.isStatic()))))
+                .make()
+                .getBytes();
+
+            // Apply transformation
+            java.lang.instrument.ClassFileTransformer transformer = new java.lang.instrument.ClassFileTransformer() {
+                @Override
+                public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
+                                      java.security.ProtectionDomain protectionDomain, byte[] classfileBuffer) {
+                    if (className.replace('/', '.').equals(targetClass.getName())) {
+                        System.out.println("[ByteBuddy] *** RETRANSFORMING: " + className + " ***");
+                        return transformedBytes;
+                    }
+                    return null;
+                }
+            };
+
+            instrumentation.addTransformer(transformer, true);
+            instrumentation.retransformClasses(targetClass);
+            instrumentation.removeTransformer(transformer);
+
+            System.out.println("[ByteBuddy] *** SPAN ATTRIBUTE ADVICE APPLIED TO " + methodKey + " ***");
+            return "SUCCESS: Created span attribute advice for " + methodKey;
+
+        } catch (Exception e) {
+            System.err.println("[ByteBuddy] Error: " + e.getMessage());
+            e.printStackTrace();
+            return "ERROR: Failed to create span attribute advice - " + e.getMessage();
+        }
+    }
+
+    /**
+     * Create event advice for capturing Spring Filter events
+     * Captures HTTP request/response headers and body
+     *
+     * @param className Target class name
+     * @param methodName Target method name (e.g., "doFilterInternal")
+     * @return Result message
+     */
+    public static String createEventAdvice(String className, String methodName) {
+        try {
+            if (instrumentation == null) {
+                return "ERROR: Agent not initialized. Please attach to JVM first.";
+            }
+
+            String methodKey = className + "." + methodName;
+            System.out.println("[ByteBuddy] Applying event advice to " + methodKey);
+
+            // Load target class
+            Class<?> targetClass = Class.forName(className);
+            ClassLoader targetClassLoader = targetClass.getClassLoader();
+
+            // Inject helper classes
+            injectHelper(targetClassLoader);
+
+            // Load EventAdvice class (if exists) or use SpanAdvice
+            Class<?> adviceClass;
+            try {
+                adviceClass = targetClassLoader.loadClass("com.javaagent.bytebuddy.advices.EventAdvice");
+            } catch (ClassNotFoundException e) {
+                // Fall back to SpanAdvice if EventAdvice doesn't exist
+                System.out.println("[ByteBuddy] EventAdvice not found, using SpanAdvice");
+                adviceClass = targetClassLoader.loadClass("com.javaagent.bytebuddy.advices.SpanAdvice");
+            }
+
+            // Create bytecode using ByteBuddy
+            byte[] transformedBytes = new ByteBuddy()
+                .redefine(targetClass)
+                .visit(Advice.to(adviceClass)
+                    .on(ElementMatchers.named(methodName)
+                            .and(ElementMatchers.isMethod())
+                            .and(ElementMatchers.not(ElementMatchers.isStatic()))))
+                .make()
+                .getBytes();
+
+            // Apply transformation
+            java.lang.instrument.ClassFileTransformer transformer = new java.lang.instrument.ClassFileTransformer() {
+                @Override
+                public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
+                                      java.security.ProtectionDomain protectionDomain, byte[] classfileBuffer) {
+                    if (className.replace('/', '.').equals(targetClass.getName())) {
+                        System.out.println("[ByteBuddy] *** RETRANSFORMING: " + className + " ***");
+                        return transformedBytes;
+                    }
+                    return null;
+                }
+            };
+
+            instrumentation.addTransformer(transformer, true);
+            instrumentation.retransformClasses(targetClass);
+            instrumentation.removeTransformer(transformer);
+
+            System.out.println("[ByteBuddy] *** EVENT ADVICE APPLIED TO " + methodKey + " ***");
+            return "SUCCESS: Created event advice for " + methodKey;
+
+        } catch (Exception e) {
+            System.err.println("[ByteBuddy] Error: " + e.getMessage());
+            e.printStackTrace();
+            return "ERROR: Failed to create event advice - " + e.getMessage();
+        }
+    }
+
+    /**
+     * Create kernel advice for kernel-level tracing
+     * Enables automatic span creation with trace/span ID extraction
+     *
+     * @param className Target class name
+     * @param methodName Target method name
+     * @return Result message
+     */
+    public static String createKernelAdvice(String className, String methodName) {
+        try {
+            if (instrumentation == null) {
+                return "ERROR: Agent not initialized. Please attach to JVM first.";
+            }
+
+            String methodKey = className + "." + methodName;
+            System.out.println("[ByteBuddy] Applying kernel advice to " + methodKey);
+
+            // Load target class
+            Class<?> targetClass = Class.forName(className);
+            ClassLoader targetClassLoader = targetClass.getClassLoader();
+
+            // Inject helper classes
+            injectHelper(targetClassLoader);
+
+            // Load KernelAdvice class
+            Class<?> adviceClass = targetClassLoader.loadClass("com.javaagent.bytebuddy.advices.KernelAdvice");
+
+            // Create bytecode using ByteBuddy
+            byte[] transformedBytes = new ByteBuddy()
+                .redefine(targetClass)
+                .visit(Advice.to(adviceClass)
+                    .on(ElementMatchers.named(methodName)
+                            .and(ElementMatchers.isMethod())
+                            .and(ElementMatchers.not(ElementMatchers.isStatic()))))
+                .make()
+                .getBytes();
+
+            // Apply transformation
+            java.lang.instrument.ClassFileTransformer transformer = new java.lang.instrument.ClassFileTransformer() {
+                @Override
+                public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
+                                      java.security.ProtectionDomain protectionDomain, byte[] classfileBuffer) {
+                    if (className.replace('/', '.').equals(targetClass.getName())) {
+                        System.out.println("[ByteBuddy] *** RETRANSFORMING: " + className + " ***");
+                        return transformedBytes;
+                    }
+                    return null;
+                }
+            };
+
+            instrumentation.addTransformer(transformer, true);
+            instrumentation.retransformClasses(targetClass);
+            instrumentation.removeTransformer(transformer);
+
+            System.out.println("[ByteBuddy] *** KERNEL ADVICE APPLIED TO " + methodKey + " ***");
+            return "SUCCESS: Created kernel advice for " + methodKey;
+
+        } catch (Exception e) {
+            System.err.println("[ByteBuddy] Error: " + e.getMessage());
+            e.printStackTrace();
+            return "ERROR: Failed to create kernel advice - " + e.getMessage();
+        }
     }
 
 }
