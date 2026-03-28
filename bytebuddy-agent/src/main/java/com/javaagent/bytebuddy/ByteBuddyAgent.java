@@ -50,10 +50,7 @@ public class ByteBuddyAgent {
                 e.printStackTrace();
             }
 
-            // Note: Helper classes are shaded into this JAR and loaded via injectHelper()
-            // HelperClassInjector.prepareHelpers() is NOT needed for shaded JAR approach
-
-            // CRITICAL: Process agent arguments for auto-instrumentation
+            // Process agent arguments for auto-instrumentation
             processAgentArgs(args);
 
             agentBuilder = new AgentBuilder.Default()
@@ -667,73 +664,14 @@ public class ByteBuddyAgent {
 
     /**
      * Create event advice for capturing Spring Filter events
-     * Captures HTTP request/response headers and body
+     * Delegates to createKernelAdvice which handles HTTP request/response capture
      *
      * @param className Target class name
      * @param methodName Target method name (e.g., "doFilterInternal")
      * @return Result message
      */
     public static String createEventAdvice(String className, String methodName) {
-        try {
-            if (instrumentation == null) {
-                return "ERROR: Agent not initialized. Please attach to JVM first.";
-            }
-
-            String methodKey = className + "." + methodName;
-            System.out.println("[ByteBuddy] Applying event advice to " + methodKey);
-
-            // Load target class
-            Class<?> targetClass = Class.forName(className);
-            ClassLoader targetClassLoader = targetClass.getClassLoader();
-
-            // Inject helper classes
-            injectHelper(targetClassLoader);
-
-            // Load EventAdvice class (if exists) or use SpanAdvice
-            Class<?> adviceClass;
-            try {
-                adviceClass = targetClassLoader.loadClass("com.javaagent.bytebuddy.advices.EventAdvice");
-            } catch (ClassNotFoundException e) {
-                // Fall back to SpanAdvice if EventAdvice doesn't exist
-                System.out.println("[ByteBuddy] EventAdvice not found, using SpanAdvice");
-                adviceClass = targetClassLoader.loadClass("com.javaagent.bytebuddy.advices.SpanAdvice");
-            }
-
-            // Create bytecode using ByteBuddy
-            byte[] transformedBytes = new ByteBuddy()
-                .redefine(targetClass)
-                .visit(Advice.to(adviceClass)
-                    .on(ElementMatchers.named(methodName)
-                            .and(ElementMatchers.isMethod())
-                            .and(ElementMatchers.not(ElementMatchers.isStatic()))))
-                .make()
-                .getBytes();
-
-            // Apply transformation
-            java.lang.instrument.ClassFileTransformer transformer = new java.lang.instrument.ClassFileTransformer() {
-                @Override
-                public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
-                                      java.security.ProtectionDomain protectionDomain, byte[] classfileBuffer) {
-                    if (className.replace('/', '.').equals(targetClass.getName())) {
-                        System.out.println("[ByteBuddy] *** RETRANSFORMING: " + className + " ***");
-                        return transformedBytes;
-                    }
-                    return null;
-                }
-            };
-
-            instrumentation.addTransformer(transformer, true);
-            instrumentation.retransformClasses(targetClass);
-            instrumentation.removeTransformer(transformer);
-
-            System.out.println("[ByteBuddy] *** EVENT ADVICE APPLIED TO " + methodKey + " ***");
-            return "SUCCESS: Created event advice for " + methodKey;
-
-        } catch (Exception e) {
-            System.err.println("[ByteBuddy] Error: " + e.getMessage());
-            e.printStackTrace();
-            return "ERROR: Failed to create event advice - " + e.getMessage();
-        }
+        return createKernelAdvice(className, methodName);
     }
 
     /**

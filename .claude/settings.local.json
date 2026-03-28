@@ -260,7 +260,12 @@
       "Bash(findstr \":16686\")",
       "Bash(jq \".data[0].spans[0] | {traceID, spanID, operationName, tags: [.tags[] | select\\(.key == \"\"arthas.attribute.userId\"\"\\)]}\")",
       "Bash(jq -r \".data[] | select\\(.spans[].tags[]? | select\\(.key == \"\"arthas.attribute.userId\"\" and .value == \"\"LINK_TEST_RETRY_12345\"\"\\)\\) | .spans[] | {traceID, spanID, operationName}\")",
-      "Bash(dir C:UsersEUROPEAppDataLocalTempclaudeC--Users-EUROPE-agent)"
+      "Bash(dir C:UsersEUROPEAppDataLocalTempclaudeC--Users-EUROPE-agent)",
+      "Bash(python3:*)",
+      "Bash(node -e \"console.log\\(new Date\\(1774621256665\\).toISOString\\(\\)\\)\")",
+      "Bash(tasklist //FI 'PID eq 5680' //FO //NH)",
+      "Bash(tasklist //FI 'PID eq 16100' //FO //NH)",
+      "Bash(curl -s -X POST http://localhost:8080/api/bytebuddy/attach -H 'Content-Type: application/json' -d '{:*)"
     ]
   }
 }

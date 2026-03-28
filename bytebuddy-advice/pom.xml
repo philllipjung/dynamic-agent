@@ -58,7 +58,7 @@
             <artifactId>jedis</artifactId>
             <version>5.1.0</version>
         </dependency>
-        <!-- Servlet API for EventAdvice -->
+        <!-- Servlet API for KernelAdvice -->
         <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>

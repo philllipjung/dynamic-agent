@@ -397,52 +397,6 @@ public class ByteBuddyController {
         appliedMethodsByPid.put(pid, methods);
     }
 
-    /** Inject helper classes into target ClassLoader */
-    private void injectHelper(ClassLoader targetLoader) {
-        try {
-            for (String helperClassName : com.javaagent.commons.AgentConstants.HELPER_CLASSES) {
-                byte[] classBytes = loadHelperClassBytes(helperClassName);
-                if (classBytes == null) continue;
-
-                injectClassIntoLoader(targetLoader, helperClassName, classBytes);
-                System.out.println("[ByteBuddyController] Injected helper: " + helperClassName);
-            }
-        } catch (Exception e) {
-            System.err.println("[ByteBuddyController] Failed to inject helper: " + e.getMessage());
-        }
-    }
-
-    private byte[] loadHelperClassBytes(String className) {
-        try {
-            String path = className.replace('.', '/') + ".class";
-            java.io.InputStream is = ClassLoader.getSystemClassLoader().getResourceAsStream(path);
-            if (is == null) {
-                is = ByteBuddyController.class.getClassLoader().getResourceAsStream(path);
-            }
-
-            if (is == null) return null;
-
-            java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
-            int bytesRead;
-            byte[] data = new byte[4096];
-            while ((bytesRead = is.read(data, 0, data.length)) != -1) {
-                buffer.write(data, 0, bytesRead);
-            }
-            is.close();
-            return buffer.toByteArray();
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private void injectClassIntoLoader(ClassLoader targetLoader, String className, byte[] classBytes) throws Exception {
-        java.lang.reflect.Method defineClass = ClassLoader.class.getDeclaredMethod(
-                "defineClass", String.class, byte[].class, int.class, int.class
-        );
-        defineClass.setAccessible(true);
-        defineClass.invoke(targetLoader, className, classBytes, 0, classBytes.length);
-    }
-
     // ============================================================
     // Request DTOs
     // ============================================================
@@ -555,42 +509,16 @@ public class ByteBuddyController {
     /**
      * Create Event Advice for Spring Filter to capture HTTP request/response
      * POST /api/bytebuddy/createEventAdvice
-     * Body: {
-     *   "className": "com.javaagent.server.filter.ExampleFilter",
-     *   "methodName": "doFilterInternal"
-     * }
      *
-     * This will intercept the filter's doFilter method and capture:
-     * - Request headers and body
-     * - Response headers and body
-     * - All events are stored and can be viewed at GET /api/events/display
+     * Note: This endpoint is kept for backward compatibility.
+     * It internally delegates to createKernelAdvice which provides HTTP capture functionality.
      */
     @PostMapping("/createEventAdvice")
     public Map<String, Object> createEventAdvice(@RequestBody CreateEventAdviceRequest request) {
-        try {
-            String result = com.javaagent.bytebuddy.ByteBuddyAgent.createEventAdvice(
-                request.getClassName(),
-                request.getMethodName()
-            );
-
-            boolean success = result.startsWith("SUCCESS");
-
-            return Map.of(
-                "success", success,
-                "message", result,
-                "className", request.getClassName(),
-                "methodName", request.getMethodName(),
-                "viewEventsUrl", "/api/events/display",
-                "clearEventsUrl", "/api/events"
-            );
-
-        } catch (Exception e) {
-            return Map.of(
-                "success", false,
-                "error", e.getMessage(),
-                "message", "Failed to create event advice"
-            );
-        }
+        return createKernelAdvice(new CreateKernelAdviceRequest() {{
+            setClassName(request.getClassName());
+            setMethodName(request.getMethodName());
+        }});
     }
 
     /**
