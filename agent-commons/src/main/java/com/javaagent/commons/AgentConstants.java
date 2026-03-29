@@ -44,8 +44,8 @@ public final class AgentConstants {
         "com.javaagent.bytebuddy.helper.SpanHelper",
         "com.javaagent.bytebuddy.helper.JaegerLinkLookupService",
         "com.javaagent.bytebuddy.helper.ThreadNameHelper",
-        "com.javaagent.bytebuddy.advices.KernelAdvice",
-        "com.javaagent.bytebuddy.helper.KernelHelper"
+        "com.javaagent.bytebuddy.advices.EventAdvice",
+        "com.javaagent.bytebuddy.helper.EventHelper"
     };
 
     // Advice JAR name (for dynamic loading scenarios)

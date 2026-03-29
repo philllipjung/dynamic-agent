@@ -16,13 +16,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.JSONObject;
 import org.json.JSONArray;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.http.client.ClientHttpRequestFactory;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Arthas Manager using Tunnel Server HTTP API
@@ -40,20 +37,21 @@ public class ArthasManager {
     private static String arthasHome;
     private static String tunnelServerHost;
     private static int tunnelServerPort;
-    private static final RestTemplate restTemplate;
 
     // Async watch support
     private static final ExecutorService watchExecutor = Executors.newCachedThreadPool();
     private static final Map<String, JSONObject> watchResults = new ConcurrentHashMap<>();
     private static final Map<String, String> watchStatus = new ConcurrentHashMap<>(); // RUNNING, COMPLETED, FAILED
 
-    static {
-        // Configure RestTemplate with longer timeout for watch commands
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(60000); // 60 seconds
-        factory.setReadTimeout(60000);    // 60 seconds (watch may take time)
-        restTemplate = new RestTemplate(factory);
-    }
+    // Async stack support
+    private static final ExecutorService stackExecutor = Executors.newCachedThreadPool();
+    private static final Map<String, String> stackResults = new ConcurrentHashMap<>();
+    private static final Map<String, String> stackStatus = new ConcurrentHashMap<>(); // RUNNING, COMPLETED, FAILED
+
+    // Async trace support
+    private static final ExecutorService traceExecutor = Executors.newCachedThreadPool();
+    private static final Map<String, String> traceResults = new ConcurrentHashMap<>();
+    private static final Map<String, String> traceStatus = new ConcurrentHashMap<>(); // RUNNING, COMPLETED, FAILED
 
     static {
         tunnelServerHost = System.getProperty(AgentConstants.PROP_ARTHAS_HOST, AgentConstants.DEFAULT_ARTHAS_HOST);
@@ -168,40 +166,64 @@ public class ArthasManager {
      * Response format: {"state": "SUCCEEDED", "body": {"results": [...]}}
      */
     public static String executeTunnelApiCommand(String pid, String command) throws IOException {
+        HttpURLConnection conn = null;
         try {
-            // Build API URL (Arthas HTTP API)
-            String url = String.format("http://%s:%d/api", tunnelServerHost, tunnelServerPort);
+            // Build API URL
+            String urlString = String.format("http://%s:%d/api", tunnelServerHost, tunnelServerPort);
+            URL url = new URL(urlString);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(60000);
+            conn.setReadTimeout(60000);
 
-            // Build JSON request body according to official API spec
+            // Build JSON request
             JSONObject requestBody = new JSONObject();
             requestBody.put("action", "exec");
             requestBody.put("command", command);
             requestBody.put("execTimeout", "60000");
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            String requestString = requestBody.toString();
+            System.out.println("[ArthasManager] API Request: " + requestString);
 
-            HttpEntity<String> entity = new HttpEntity<>(requestBody.toString(), headers);
-
-            System.out.println("[ArthasManager] API Request: " + requestBody.toString());
-
-            // Execute HTTP POST
-            org.springframework.http.ResponseEntity<String> response = restTemplate.exchange(
-                url, HttpMethod.POST, entity, String.class
-            );
-
-            String responseBody = response.getBody();
-            if (responseBody == null) {
-                return "{\"error\": \"No response from server\"}";
+            // Send request
+            try (OutputStream os = conn.getOutputStream()) {
+                byte[] input = requestString.getBytes(StandardCharsets.UTF_8);
+                os.write(input, 0, input.length);
             }
 
-            System.out.println("[ArthasManager] API Response: " + responseBody);
+            // Read response
+            int responseCode = conn.getResponseCode();
+            System.out.println("[ArthasManager] Response code: " + responseCode);
 
-            // Return the response as-is for parsing by caller
+            BufferedReader br;
+            if (responseCode >= 200 && responseCode < 300) {
+                br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+            } else {
+                br = new BufferedReader(new InputStreamReader(conn.getErrorStream(), StandardCharsets.UTF_8));
+            }
+
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                response.append(line);
+            }
+            br.close();
+
+            String responseBody = response.toString();
+            System.out.println("[ArthasManager] Response length: " + responseBody.length());
+
             return responseBody;
 
         } catch (Exception e) {
-            return "{\"error\": \"API call failed: " + e.getMessage() + "\"}";
+            System.err.println("[ArthasManager] API call failed: " + e.getMessage());
+            e.printStackTrace();
+            return "{\"error\": \"API call failed: " + e.getMessage().replace("\"", "'") + "\"}";
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
         }
     }
 
@@ -214,6 +236,7 @@ public class ArthasManager {
      * - "@ArrayList[]@ArrayList[@String[]..."
      */
     public static JSONObject watchWithParameters(String className, String methodName, int limit) {
+        String result = null;  // Declare outside try block for error handling
         try {
             String pid = getFirstAvailablePid();
             if (pid.startsWith("ERROR") || pid.isEmpty()) {
@@ -228,10 +251,27 @@ public class ArthasManager {
             System.out.println("[ArthasManager] Executing watch: " + watchCmd);
 
             // Execute via HTTP API
-            String result = executeTunnelApiCommand(pid, watchCmd);
+            result = executeTunnelApiCommand(pid, watchCmd);
+
+            // Debug: Print raw response to file
+            System.err.println("[ArthasManager] Raw response length: " + (result != null ? result.length() : 0));
+            System.err.println("[ArthasManager] Raw response (first 500 chars): " + (result != null ? result.substring(0, Math.min(500, result.length())) : "null"));
+            System.err.println("[ArthasManager] Raw response starts with: " + (result != null && result.length() > 0 ? "[" + result.charAt(0) + "]" : "null"));
+            System.err.println("[ArthasManager] Raw response ends with: " + (result != null && result.length() > 0 ? "[" + result.charAt(result.length() - 1) + "]" : "null"));
+
+            // Handle nested JSON string response (Arthas API returns escaped JSON)
+            String jsonStr = result;
+            if (result != null && result.startsWith("\"") && result.endsWith("\"")) {
+                // Remove quotes and unescape
+                jsonStr = result.substring(1, result.length() - 1)
+                                 .replace("\\\"", "\"")
+                                 .replace("\\\\", "\\");
+                System.err.println("[ArthasManager] Unescaped JSON: " + jsonStr);
+            }
 
             // Parse JSON response
-            JSONObject response = new JSONObject(result);
+            System.err.println("[ArthasManager] Attempting to parse: " + (jsonStr != null ? jsonStr.substring(0, Math.min(100, jsonStr.length())) : "null"));
+            JSONObject response = new JSONObject(jsonStr);
 
             // Check for errors
             if (response.has("error")) {
@@ -240,8 +280,21 @@ public class ArthasManager {
 
             // Check response state
             String state = response.optString("state", "UNKNOWN");
-            if (!"SUCCEEDED".equals(state)) {
+            // Allow both SUCCEEDED and INTERRUPTED (timeout waiting for method call)
+            if (!"SUCCEEDED".equals(state) && !"INTERRUPTED".equals(state)) {
                 return new JSONObject().put("error", "Command execution failed: " + state);
+            }
+
+            // If INTERRUPTED, return empty parameters (method not called)
+            if ("INTERRUPTED".equals(state)) {
+                JSONObject resultJson = new JSONObject();
+                resultJson.put("success", true);
+                resultJson.put("warning", "Method not called within timeout period");
+                resultJson.put("className", className);
+                resultJson.put("methodName", methodName);
+                resultJson.put("parameters", new JSONArray());
+                resultJson.put("parameterCount", 0);
+                return resultJson;
             }
 
             // Parse parameters from response body
@@ -287,6 +340,11 @@ public class ArthasManager {
 
             return resultJson;
 
+        } catch (org.json.JSONException e) {
+            System.err.println("[ArthasManager] JSON parse error: " + e.getMessage());
+            System.err.println("[ArthasManager] Raw response: " + (result != null ? result.substring(0, Math.min(200, result.length())) : "null"));
+            e.printStackTrace();
+            return new JSONObject().put("error", "JSON parse error: " + e.getMessage());
         } catch (Exception e) {
             e.printStackTrace();
             return new JSONObject().put("error", e.getMessage());
@@ -371,8 +429,8 @@ public class ArthasManager {
                 return "ERROR: No running JVM found. Please start a Java application first.";
             }
 
-            // Build trace command
-            String traceCmd = "trace " + className + " " + methodName + " -n 5";
+            // Build trace command with -n 1 to limit invocations and avoid timeout
+            String traceCmd = "trace " + className + " " + methodName + " -n 1";
 
             // Execute via HTTP API
             return executeTunnelApiCommand(pid, traceCmd);
@@ -391,8 +449,8 @@ public class ArthasManager {
                 return "ERROR: No running JVM found. Please start a Java application first.";
             }
 
-            // Build stack command
-            String stackCmd = "stack " + className + " " + methodName + " -n 5";
+            // Build stack command with -n 1 to limit invocations and avoid timeout
+            String stackCmd = "stack " + className + " " + methodName + " -n 1";
 
             // Execute via HTTP API
             return executeTunnelApiCommand(pid, stackCmd);
@@ -924,6 +982,132 @@ public class ArthasManager {
                 for (String key : data.keySet()) {
                     result.put(key, data.get(key));
                 }
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Start async stack operation
+     * @param jobId Job ID from startStackAsync
+     * @return Stack result with status
+     */
+    public static String startStackAsync(String className, String methodName) {
+        String jobId = "stack-" + System.currentTimeMillis();
+        String pid = getFirstAvailablePid();
+
+        if (pid.startsWith("ERROR") || pid.isEmpty()) {
+            stackStatus.put(jobId, "FAILED");
+            stackResults.put(jobId, "ERROR: No running JVM found");
+            return jobId;
+        }
+
+        stackStatus.put(jobId, "RUNNING");
+
+        // Execute stack in background thread
+        stackExecutor.submit(() -> {
+            try {
+                String stackCmd = String.format("stack %s %s -n 1", className, methodName);
+
+                System.out.println("[ArthasManager] Async stack started: " + jobId + " - " + stackCmd);
+
+                String result = executeTunnelApiCommand(pid, stackCmd);
+
+                stackResults.put(jobId, result);
+                stackStatus.put(jobId, "COMPLETED");
+                System.out.println("[ArthasManager] Async stack completed: " + jobId);
+
+            } catch (Exception e) {
+                System.err.println("[ArthasManager] Async stack failed: " + jobId + " - " + e.getMessage());
+                stackResults.put(jobId, "ERROR: " + e.getMessage());
+                stackStatus.put(jobId, "FAILED");
+            }
+        });
+
+        return jobId;
+    }
+
+    /**
+     * Get stack result by jobId
+     * @param jobId Job ID from startStackAsync
+     * @return Stack result with status
+     */
+    public static JSONObject getStackResult(String jobId) {
+        JSONObject result = new JSONObject();
+        result.put("jobId", jobId);
+
+        String status = stackStatus.getOrDefault(jobId, "UNKNOWN");
+        result.put("status", status);
+
+        if ("COMPLETED".equals(status) || "FAILED".equals(status)) {
+            String data = stackResults.get(jobId);
+            if (data != null) {
+                result.put("result", data);
+                result.put("success", !data.startsWith("ERROR"));
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Start async trace operation
+     * @param jobId Job ID from startTraceAsync
+     * @return Trace result with status
+     */
+    public static String startTraceAsync(String className, String methodName) {
+        String jobId = "trace-" + System.currentTimeMillis();
+        String pid = getFirstAvailablePid();
+
+        if (pid.startsWith("ERROR") || pid.isEmpty()) {
+            traceStatus.put(jobId, "FAILED");
+            traceResults.put(jobId, "ERROR: No running JVM found");
+            return jobId;
+        }
+
+        traceStatus.put(jobId, "RUNNING");
+
+        // Execute trace in background thread
+        traceExecutor.submit(() -> {
+            try {
+                String traceCmd = String.format("trace %s %s -n 1", className, methodName);
+
+                System.out.println("[ArthasManager] Async trace started: " + jobId + " - " + traceCmd);
+
+                String result = executeTunnelApiCommand(pid, traceCmd);
+
+                traceResults.put(jobId, result);
+                traceStatus.put(jobId, "COMPLETED");
+                System.out.println("[ArthasManager] Async trace completed: " + jobId);
+
+            } catch (Exception e) {
+                System.err.println("[ArthasManager] Async trace failed: " + jobId + " - " + e.getMessage());
+                traceResults.put(jobId, "ERROR: " + e.getMessage());
+                traceStatus.put(jobId, "FAILED");
+            }
+        });
+
+        return jobId;
+    }
+
+    /**
+     * Get trace result by jobId
+     * @param jobId Job ID from startTraceAsync
+     * @return Trace result with status
+     */
+    public static JSONObject getTraceResult(String jobId) {
+        JSONObject result = new JSONObject();
+        result.put("jobId", jobId);
+
+        String status = traceStatus.getOrDefault(jobId, "UNKNOWN");
+        result.put("status", status);
+
+        if ("COMPLETED".equals(status) || "FAILED".equals(status)) {
+            String data = traceResults.get(jobId);
+            if (data != null) {
+                result.put("result", data);
+                result.put("success", !data.startsWith("ERROR"));
             }
         }
 

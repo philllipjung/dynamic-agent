@@ -145,8 +145,8 @@ public class ByteBuddyAgent {
                     exchange.close();
                 });
 
-                // Add createKernelAdvice handler
-                server.createContext("/api/createKernelAdvice", exchange -> {
+                // Add createEventAdvice handler
+                server.createContext("/api/createEventAdvice", exchange -> {
                     try {
                         // Read request body
                         java.io.BufferedReader reader = new java.io.BufferedReader(
@@ -161,7 +161,7 @@ public class ByteBuddyAgent {
                         String className = extractJsonValue(body.toString(), "className");
                         String methodName = extractJsonValue(body.toString(), "methodName");
 
-                        String result = createKernelAdvice(className, methodName);
+                        String result = createEventAdvice(className, methodName);
                         String response = "{\"success\":" + result.startsWith("SUCCESS") +
                             ",\"message\":\"" + result.replace("\"", "'") + "\"}";
                         exchange.sendResponseHeaders(200, response.length());
@@ -427,7 +427,7 @@ public class ByteBuddyAgent {
 
     /**
      * Instrument Spring Filter classes to capture HTTP request headers and body
-     * Uses KernelAdvice to print request information
+     * Uses EventAdvice to print request information
      *
      * @return Result message
      */
@@ -556,9 +556,9 @@ public class ByteBuddyAgent {
         // Inject helper classes
         injectHelper(targetClassLoader);
 
-        // Load KernelAdvice class
-        Class<?> adviceClass = targetClassLoader.loadClass("com.javaagent.bytebuddy.advices.KernelAdvice");
-        System.out.println("[ByteBuddy] KernelAdvice loaded: " + adviceClass);
+        // Load EventAdvice class
+        Class<?> adviceClass = targetClassLoader.loadClass("com.javaagent.bytebuddy.advices.EventAdvice");
+        System.out.println("[ByteBuddy] EventAdvice loaded: " + adviceClass);
 
         // Create bytecode using ByteBuddy
         // Match doFilter(ServletRequest, ServletResponse, FilterChain) - takes 3 arguments
@@ -663,43 +663,54 @@ public class ByteBuddyAgent {
     }
 
     /**
-     * Create event advice for capturing Spring Filter events
-     * Delegates to createKernelAdvice which handles HTTP request/response capture
+     * Create event advice for capturing HTTP request events
+     * Enables HTTP request/response capture in JSON format
      *
      * @param className Target class name
-     * @param methodName Target method name (e.g., "doFilterInternal")
+     * @param methodName Target method name (e.g., "doService")
      * @return Result message
      */
     public static String createEventAdvice(String className, String methodName) {
-        return createKernelAdvice(className, methodName);
-    }
-
-    /**
-     * Create kernel advice for kernel-level tracing
-     * Enables automatic span creation with trace/span ID extraction
-     *
-     * @param className Target class name
-     * @param methodName Target method name
-     * @return Result message
-     */
-    public static String createKernelAdvice(String className, String methodName) {
         try {
             if (instrumentation == null) {
                 return "ERROR: Agent not initialized. Please attach to JVM first.";
             }
 
             String methodKey = className + "." + methodName;
-            System.out.println("[ByteBuddy] Applying kernel advice to " + methodKey);
+            System.out.println("[ByteBuddy] Applying event advice to " + methodKey);
 
-            // Load target class
-            Class<?> targetClass = Class.forName(className);
-            ClassLoader targetClassLoader = targetClass.getClassLoader();
+            // Load target class - search through instrumentation first for Spring Boot apps
+            final Class<?> targetClass;
+            final ClassLoader targetClassLoader;
+
+            // Try to find the class in already loaded classes (for Spring Boot apps)
+            Class<?> foundClass = null;
+            ClassLoader foundLoader = null;
+
+            for (Class<?> clazz : instrumentation.getAllLoadedClasses()) {
+                if (clazz.getName().equals(className)) {
+                    foundClass = clazz;
+                    foundLoader = clazz.getClassLoader();
+                    System.out.println("[ByteBuddy] Found class in loaded classes: " + className + " (loader: " + foundLoader + ")");
+                    break;
+                }
+            }
+
+            // If not found, try Class.forName as fallback
+            if (foundClass == null) {
+                System.out.println("[ByteBuddy] Class not found in loaded classes, trying Class.forName");
+                foundClass = Class.forName(className);
+                foundLoader = foundClass.getClassLoader();
+            }
+
+            targetClass = foundClass;
+            targetClassLoader = foundLoader;
 
             // Inject helper classes
             injectHelper(targetClassLoader);
 
-            // Load KernelAdvice class
-            Class<?> adviceClass = targetClassLoader.loadClass("com.javaagent.bytebuddy.advices.KernelAdvice");
+            // Load EventAdvice class
+            Class<?> adviceClass = targetClassLoader.loadClass("com.javaagent.bytebuddy.advices.EventAdvice");
 
             // Create bytecode using ByteBuddy
             byte[] transformedBytes = new ByteBuddy()
@@ -728,13 +739,13 @@ public class ByteBuddyAgent {
             instrumentation.retransformClasses(targetClass);
             instrumentation.removeTransformer(transformer);
 
-            System.out.println("[ByteBuddy] *** KERNEL ADVICE APPLIED TO " + methodKey + " ***");
-            return "SUCCESS: Created kernel advice for " + methodKey;
+            System.out.println("[ByteBuddy] *** EVENT ADVICE APPLIED TO " + methodKey + " ***");
+            return "SUCCESS: Created event advice for " + methodKey;
 
         } catch (Exception e) {
             System.err.println("[ByteBuddy] Error: " + e.getMessage());
             e.printStackTrace();
-            return "ERROR: Failed to create kernel advice - " + e.getMessage();
+            return "ERROR: Failed to create event advice - " + e.getMessage();
         }
     }
 

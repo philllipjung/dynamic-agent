@@ -507,18 +507,40 @@ public class ByteBuddyController {
     // ============================================================
 
     /**
-     * Create Event Advice for Spring Filter to capture HTTP request/response
+     * Create Event Advice for HTTP request/response capture
      * POST /api/bytebuddy/createEventAdvice
      *
-     * Note: This endpoint is kept for backward compatibility.
-     * It internally delegates to createKernelAdvice which provides HTTP capture functionality.
+     * This enables HTTP request/response capture in JSON format
      */
     @PostMapping("/createEventAdvice")
     public Map<String, Object> createEventAdvice(@RequestBody CreateEventAdviceRequest request) {
-        return createKernelAdvice(new CreateKernelAdviceRequest() {{
-            setClassName(request.getClassName());
-            setMethodName(request.getMethodName());
-        }});
+        try {
+            String result = com.javaagent.bytebuddy.ByteBuddyAgent.createEventAdvice(
+                request.getClassName(),
+                request.getMethodName()
+            );
+
+            boolean success = result.startsWith("SUCCESS");
+
+            return Map.of(
+                "success", success,
+                "message", result,
+                "className", request.getClassName(),
+                "methodName", request.getMethodName(),
+                "features", List.of(
+                    "HTTP request info capture (method, URI, query string)",
+                    "HTTP headers capture in JSON format",
+                    "HTTP body capture in JSON format"
+                )
+            );
+
+        } catch (Exception e) {
+            return Map.of(
+                "success", false,
+                "error", e.getMessage(),
+                "message", "Failed to create event advice"
+            );
+        }
     }
 
     /**
@@ -543,7 +565,7 @@ public class ByteBuddyController {
      * POST /api/bytebuddy/instrumentFilters
      *
      * This will automatically find and instrument all javax.servlet.Filter implementations
-     * to print HTTP request headers and body using KernelAdvice
+     * to print HTTP request headers and body using EventAdvice
      */
     @PostMapping("/instrumentFilters")
     public Map<String, Object> instrumentFilters() {
@@ -585,69 +607,13 @@ public class ByteBuddyController {
     }
 
     /**
-     * Create Kernel Advice for kernel-level tracing
-     * POST /api/bytebuddy/createKernelAdvice
-     * Body: {
-     *   "className": "com.example.demo.Service1Controller",
-     *   "methodName": "index"
-     * }
-     *
-     * This will enable automatic kernel-level tracing:
-     * - Automatic span creation with trace/span ID extraction
-     * - Thread name customization (reactor-http-epoll, parallel, boundedElastic)
-     * - Child span support for parallel/async operations
-     * - Automatic span completion on method exit
-     *
-     * Example: Apply to Service1Controller.index to automatically:
-     * 1. Create span on method entry
-     * 2. Customize thread names with trace/span info
-     * 3. Track parallel and boundedElastic task threads
-     * 4. Complete span on method exit
+     * @deprecated Use /api/bytebuddy/createEventAdvice instead
      */
+    @Deprecated
     @PostMapping("/createKernelAdvice")
-    public Map<String, Object> createKernelAdvice(@RequestBody CreateKernelAdviceRequest request) {
-        try {
-            String result = com.javaagent.bytebuddy.ByteBuddyAgent.createKernelAdvice(
-                request.getClassName(),
-                request.getMethodName()
-            );
-
-            boolean success = result.startsWith("SUCCESS");
-
-            return Map.of(
-                "success", success,
-                "message", result,
-                "className", request.getClassName(),
-                "methodName", request.getMethodName(),
-                "features", List.of(
-                    "Automatic span creation",
-                    "Thread name customization with trace/span info",
-                    "Reactor scheduler integration (parallel, boundedElastic)",
-                    "Child span support for parallel operations",
-                    "Automatic span completion on method exit"
-                )
-            );
-
-        } catch (Exception e) {
-            return Map.of(
-                "success", false,
-                "error", e.getMessage(),
-                "message", "Failed to create kernel advice"
-            );
-        }
-    }
-
-    /**
-     * Request DTO for createKernelAdvice
-     */
-    public static class CreateKernelAdviceRequest {
-        private String className;
-        private String methodName;
-
-        public String getClassName() { return className; }
-        public void setClassName(String className) { this.className = className; }
-        public String getMethodName() { return methodName; }
-        public void setMethodName(String methodName) { this.methodName = methodName; }
+    public Map<String, Object> createKernelAdvice(@RequestBody CreateEventAdviceRequest request) {
+        // Delegate to createEventAdvice
+        return createEventAdvice(request);
     }
 
     // ============================================================
