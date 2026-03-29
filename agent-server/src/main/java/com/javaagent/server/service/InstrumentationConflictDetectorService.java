@@ -126,13 +126,13 @@ public class InstrumentationConflictDetectorService {
                 Collectors.counting()
             ));
 
-        if (conflictTypes.containsKeyOrDefault("OPENTELEMETRY", 0L) > 0) {
+        if (conflictTypes.getOrDefault("OPENTELEMETRY", 0L) > 0) {
             report.addRecommendation("Remove OpenTelemetry-overlapping instrumentation to avoid duplicate spans.");
             report.addRecommendation("Focus ByteBuddy instrumentation on @Service business logic methods.");
         }
 
-        if (conflictTypes.containsKeyOrDefault("BYTEBUDDY", 0L) > 0
-            && conflictTypes.containsKeyOrDefault("ARTHAS", 0L) > 0) {
+        if (conflictTypes.getOrDefault("BYTEBUDDY", 0L) > 0
+            && conflictTypes.getOrDefault("ARTHAS", 0L) > 0) {
             report.addRecommendation("Choose between ByteBuddy (for production spans) and Arthas (for debugging).");
             report.addRecommendation("Avoid using both on the same methods.");
         }
