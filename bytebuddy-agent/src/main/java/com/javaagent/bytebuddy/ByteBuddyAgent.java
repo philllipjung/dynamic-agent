@@ -30,6 +30,7 @@ public class ByteBuddyAgent {
     private static final Set<String> appliedMethods = ConcurrentHashMap.newKeySet();
     private static final AtomicBoolean initialized = new AtomicBoolean(false);
     private static AgentBuilder agentBuilder;
+    private static com.sun.net.httpserver.HttpServer httpServer;
 
     public static void premain(String args, Instrumentation inst) {
         System.out.println("[ByteBuddy] premain called with args: " + args);
@@ -91,18 +92,18 @@ public class ByteBuddyAgent {
         new Thread(() -> {
             try {
                 int port = findAvailablePort(9999, 10010);
-                com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+                httpServer = com.sun.net.httpserver.HttpServer.create(
                     new java.net.InetSocketAddress(port), 0);
 
                 // Register handlers
-                server.createContext("/api/health", exchange -> {
+                httpServer.createContext("/api/health", exchange -> {
                     String response = "{\"status\":\"ok\",\"agent\":\"ByteBuddyAgent\"}";
                     exchange.sendResponseHeaders(200, response.length());
                     exchange.getResponseBody().write(response.getBytes());
                     exchange.close();
                 });
 
-                server.createContext("/api/instrumentFilters", exchange -> {
+                httpServer.createContext("/api/instrumentFilters", exchange -> {
                     try {
                         String result = instrumentFilters();
                         String response = "{\"success\":" + result.startsWith("SUCCESS") +
@@ -117,7 +118,7 @@ public class ByteBuddyAgent {
                     exchange.close();
                 });
 
-                server.createContext("/api/createSpan", exchange -> {
+                httpServer.createContext("/api/createSpan", exchange -> {
                     try {
                         // Read request body
                         java.io.BufferedReader reader = new java.io.BufferedReader(
@@ -146,7 +147,7 @@ public class ByteBuddyAgent {
                 });
 
                 // Add createEventAdvice handler
-                server.createContext("/api/createEventAdvice", exchange -> {
+                httpServer.createContext("/api/createEventAdvice", exchange -> {
                     try {
                         // Read request body
                         java.io.BufferedReader reader = new java.io.BufferedReader(
@@ -174,8 +175,24 @@ public class ByteBuddyAgent {
                     exchange.close();
                 });
 
-                server.setExecutor(null);
-                server.start();
+                // Add detach handler
+                httpServer.createContext("/api/detach", exchange -> {
+                    try {
+                        String result = detach();
+                        String response = "{\"success\":" + result.startsWith("SUCCESS") +
+                            ",\"message\":\"" + result.replace("\"", "'") + "\"}";
+                        exchange.sendResponseHeaders(200, response.length());
+                        exchange.getResponseBody().write(response.getBytes());
+                    } catch (Exception e) {
+                        String error = "{\"success\":false,\"error\":\"" + e.getMessage() + "\"}";
+                        exchange.sendResponseHeaders(500, error.length());
+                        exchange.getResponseBody().write(error.getBytes());
+                    }
+                    exchange.close();
+                });
+
+                httpServer.setExecutor(null);
+                httpServer.start();
                 System.out.println("[ByteBuddy] HTTP server started on port " + port);
             } catch (Exception e) {
                 System.err.println("[ByteBuddy] Failed to start HTTP server: " + e.getMessage());
@@ -746,6 +763,38 @@ public class ByteBuddyAgent {
             System.err.println("[ByteBuddy] Error: " + e.getMessage());
             e.printStackTrace();
             return "ERROR: Failed to create event advice - " + e.getMessage();
+        }
+    }
+
+    /**
+     * Stop the HTTP server
+     */
+    public static void stopHttpServer() {
+        if (httpServer != null) {
+            try {
+                httpServer.stop(0);
+                System.out.println("[ByteBuddy] HTTP server stopped");
+            } catch (Exception e) {
+                System.err.println("[ByteBuddy] Failed to stop HTTP server: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Detach the ByteBuddy agent
+     * Stops HTTP server and clears applied methods tracking
+     * Note: Instrumentation remains in the target JVM until it restarts
+     *
+     * @return Result message
+     */
+    public static String detach() {
+        try {
+            stopHttpServer();
+            appliedMethods.clear();
+            initialized.set(false);
+            return "SUCCESS: Detached (instrumentation remains in target JVM)";
+        } catch (Exception e) {
+            return "ERROR: Failed to detach - " + e.getMessage();
         }
     }
 

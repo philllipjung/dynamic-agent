@@ -1,6 +1,7 @@
 package com.javaagent.server.controller;
 
 import com.javaagent.arthas.ArthasManager;
+import com.javaagent.server.service.AgentStateService;
 import com.javaagent.server.service.ParameterMappingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +20,9 @@ public class ArthasController {
     @Autowired
     private ParameterMappingService parameterMappingService;
 
+    @Autowired
+    private AgentStateService agentStateService;
+
     /**
      * Attach Arthas to a JVM by class name or PID
      * POST /api/arthas/attach
@@ -27,19 +31,59 @@ public class ArthasController {
     @PostMapping("/attach")
     public Map<String, Object> attach(@RequestBody AttachRequest request) {
         String result;
+        String actualPid = null;
+
         if (request.getPid() != null && !request.getPid().isEmpty()) {
             result = ArthasManager.attachByPid(request.getPid());
+            actualPid = request.getPid();
         } else if (request.getClassName() != null && !request.getClassName().isEmpty()) {
             result = ArthasManager.attachByClassName(request.getClassName());
+            // Extract PID from result if successful
+            if (result.startsWith("SUCCESS")) {
+                actualPid = extractPidFromResult(result);
+            }
         } else {
             result = "ERROR: Either className or pid is required";
         }
+
+        // Save JVM state to Redis on successful attach
+        if (result.startsWith("SUCCESS") && actualPid != null) {
+            try {
+                String className = request.getClassName();
+                if (className == null || className.isEmpty()) {
+                    className = "Unknown";
+                }
+                // Check if already exists (might be BOTH type)
+                if (agentStateService.getJvm(actualPid) != null) {
+                    agentStateService.updateJvmAgentType(actualPid, "ARTHAS");
+                } else {
+                    agentStateService.saveJvm(actualPid, className, "ARTHAS");
+                }
+            } catch (Exception e) {
+                System.err.println("[ArthasController] Failed to save JVM state: " + e.getMessage());
+            }
+        }
+
         return Map.of(
                 "success", result.startsWith("SUCCESS"),
                 "message", result,
                 "className", request.getClassName() != null ? request.getClassName() : "",
-                "pid", request.getPid() != null ? request.getPid() : ""
+                "pid", actualPid != null ? actualPid : request.getPid()
         );
+    }
+
+    private String extractPidFromResult(String result) {
+        // Extract PID from result string like "SUCCESS: Attached to PID 18508"
+        try {
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile("PID (\\d+)");
+            java.util.regex.Matcher m = p.matcher(result);
+            if (m.find()) {
+                return m.group(1);
+            }
+        } catch (Exception e) {
+            // Ignore
+        }
+        return null;
     }
 
     /**
@@ -278,6 +322,16 @@ public class ArthasController {
     @DeleteMapping("/detach")
     public Map<String, Object> detach(@RequestParam("pid") String pid) {
         String result = ArthasManager.detach(pid);
+
+        // Remove JVM state from Redis on successful detach
+        if (result.startsWith("SUCCESS")) {
+            try {
+                agentStateService.removeJvm(pid);
+            } catch (Exception e) {
+                System.err.println("[ArthasController] Failed to remove JVM state: " + e.getMessage());
+            }
+        }
+
         return Map.of(
                 "success", result.startsWith("SUCCESS"),
                 "message", result

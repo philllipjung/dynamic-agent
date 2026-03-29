@@ -3,7 +3,9 @@ package com.javaagent.server.controller;
 import com.javaagent.bytebuddy.AttachManager;
 import com.javaagent.bytebuddy.ByteBuddyAgent;
 import com.javaagent.server.opensearch.OpenSearchManager;
+import com.javaagent.server.service.AgentStateService;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import org.springframework.beans.factory.annotation.Autowired;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.DynamicType;
@@ -35,6 +37,12 @@ public class ByteBuddyController {
     // ============================================================
     // Section 1: Agent Lifecycle
     // ============================================================
+
+    @Autowired
+    private AgentStateService agentStateService;
+
+    @Autowired
+    private com.javaagent.server.service.InstrumentationConflictDetectorService conflictDetector;
 
     /** Attached PIDs tracking */
     private static final Set<String> attachedPids = ConcurrentHashMap.newKeySet();
@@ -95,6 +103,17 @@ public class ByteBuddyController {
 
             attachedPids.add(pid);
 
+            // Save JVM state to Redis
+            try {
+                String className = request.getClassName();
+                if (className == null || className.isEmpty()) {
+                    className = "Unknown"; // Could be enhanced to look up actual class name
+                }
+                agentStateService.saveJvm(pid, className, "BYTEBUDDY");
+            } catch (Exception e) {
+                System.err.println("[ByteBuddyController] Failed to save JVM state: " + e.getMessage());
+            }
+
             return Map.of(
                 "success", true,
                 "message", "ByteBuddy Agent attached to PID " + pid,
@@ -121,8 +140,15 @@ public class ByteBuddyController {
      * This just removes the PID from tracking
      */
     @DeleteMapping("/detach")
-    public Map<String, Object> detach(@RequestParam String pid) {
+    public Map<String, Object> detach(@RequestParam("pid") String pid) {
         if (attachedPids.remove(pid)) {
+            // Remove JVM state from Redis
+            try {
+                agentStateService.removeJvm(pid);
+            } catch (Exception e) {
+                System.err.println("[ByteBuddyController] Failed to remove JVM state: " + e.getMessage());
+            }
+
             return Map.of(
                 "success", true,
                 "message", "Detached from PID " + pid,
@@ -282,10 +308,36 @@ public class ByteBuddyController {
             String className = request.getClassName();
             String methodName = request.getMethodName();
 
+            // Check for conflicts with OpenTelemetry before instrumenting
+            Map<String, Object> conflictCheck = conflictDetector.checkInstrumentationConflict(pid, className, methodName);
+            Boolean hasConflict = (Boolean) conflictCheck.get("hasConflict");
+
+            if (hasConflict) {
+                return Map.of(
+                    "success", false,
+                    "message", "CONFLICT: " + conflictCheck.get("reason"),
+                    "type", "createSpan",
+                    "className", className,
+                    "methodName", methodName,
+                    "conflictType", conflictCheck.get("conflictType"),
+                    "recommendation", conflictCheck.get("recommendation")
+                );
+            }
+
             // Direct call to ByteBuddyAgent (agent must be attached to target JVM)
             String result = com.javaagent.bytebuddy.ByteBuddyAgent.createSpan(pid, className, methodName);
 
             boolean success = result.startsWith("SUCCESS");
+
+            // Save instrumentation state
+            if (success) {
+                try {
+                    agentStateService.saveInstrumentation(pid, className, methodName, "SPAN");
+                } catch (Exception e) {
+                    System.err.println("[ByteBuddyController] Failed to save instrumentation: " + e.getMessage());
+                }
+            }
+
             return Map.of(
                     "success", success,
                     "message", result,
@@ -443,6 +495,22 @@ public class ByteBuddyController {
             String className = request.getClassName();
             String methodName = request.getMethodName();
 
+            // Check for conflicts with OpenTelemetry before instrumenting
+            Map<String, Object> conflictCheck = conflictDetector.checkInstrumentationConflict(pid, className, methodName);
+            Boolean hasConflict = (Boolean) conflictCheck.get("hasConflict");
+
+            if (hasConflict) {
+                return Map.of(
+                    "success", false,
+                    "message", "CONFLICT: " + conflictCheck.get("reason"),
+                    "type", "createSpanAttribute",
+                    "className", className,
+                    "methodName", methodName,
+                    "conflictType", conflictCheck.get("conflictType"),
+                    "recommendation", conflictCheck.get("recommendation")
+                );
+            }
+
             // 1. 파라미터 매핑 생성
             java.util.Map<Integer, String> paramMapping = new java.util.LinkedHashMap<>();
             if (request.getParameters() != null) {
@@ -461,6 +529,16 @@ public class ByteBuddyController {
             );
 
             boolean success = result.startsWith("SUCCESS");
+
+            // Save instrumentation state
+            if (success) {
+                try {
+                    agentStateService.saveInstrumentation(pid, className, methodName, "SPAN_ATTRIBUTE");
+                } catch (Exception e) {
+                    System.err.println("[ByteBuddyController] Failed to save instrumentation: " + e.getMessage());
+                }
+            }
+
             return Map.of(
                 "success", success,
                 "message", result,
@@ -521,6 +599,18 @@ public class ByteBuddyController {
             );
 
             boolean success = result.startsWith("SUCCESS");
+
+            // Save instrumentation state
+            if (success) {
+                try {
+                    agentStateService.saveInstrumentation(
+                        request.getClassName(), request.getClassName(),
+                        request.getMethodName(), "EVENT"
+                    );
+                } catch (Exception e) {
+                    System.err.println("[ByteBuddyController] Failed to save instrumentation: " + e.getMessage());
+                }
+            }
 
             return Map.of(
                 "success", success,
