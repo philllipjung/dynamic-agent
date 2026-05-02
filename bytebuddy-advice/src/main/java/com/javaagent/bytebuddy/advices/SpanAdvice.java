@@ -18,7 +18,6 @@ public class SpanAdvice {
     public static final Map<String, Map<Integer, String>> parameterMappings = new ConcurrentHashMap<>();
 
     // Jaeger Link Lookup 설정
-    private static final String SERVICE_NAME = "unknown_service:java";  // 또는 실제 service name
     private static final boolean ENABLE_JAEGER_LINK = true;             // Link 생성 활성화/비활성화
 
     /**
@@ -145,12 +144,12 @@ public class SpanAdvice {
 
         // test1 → test2
         if (className.contains("Test1Controller")) {
-            targetService = SERVICE_NAME;
+            targetService = "test2-service";  // test1은 test2를 링크
             targetOperation = "public java.lang.String com.test.service.test2.controller.Test2Controller.test2(java.lang.String)";
         }
         // test2 → test1
         else if (className.contains("Test2Controller")) {
-            targetService = SERVICE_NAME;
+            targetService = "test1-service";  // test2는 test1을 링크
             targetOperation = "public java.lang.String com.test.service.test1.controller.Test1Controller.test1(java.lang.String)";
         }
 

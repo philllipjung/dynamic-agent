@@ -147,50 +147,51 @@ public class JaegerLinkLookupService {
         List<SpanRef> spans = new ArrayList<>();
 
         try {
-            // 더 강력한 JSON 파싱
-            // 각 trace 블록을 찾기
-            Pattern tracePattern = Pattern.compile("\"traceID\"\\s*:\\s*\"([0-9a-fA-F]+)\"");
-            Matcher traceMatcher = tracePattern.matcher(jsonResponse);
+            // 각 span 객체를 개별적으로 파싱하여 spanID와 operationName 쌍을 추출
+            Pattern spanPattern = Pattern.compile("\\{[^}]*\"spanID\"\\s*:\\s*\"([0-9a-fA-F]+)\"[^}]*\"operationName\"\\s*:\\s*\"([^\"]+)\"[^}]*\\}");
+            // 위 패턴은 spanID와 operationName이 같은 객체 내에 있는 경우만 매칭
 
-            while (traceMatcher.find()) {
-                String traceId = traceMatcher.group(1);
-                int traceStart = traceMatcher.start();
+            // 더 유연한 접근: span 객체 경계를 찾고 그 안에서 필드 추출
+            Pattern spanObjectPattern = Pattern.compile("\\{[^}]*\"spanID\"[^}]*\"operationName\"[^}]*\\}");
+            Pattern spanIdPattern = Pattern.compile("\"spanID\"\\s*:\\s*\"([0-9a-fA-F]+)\"");
+            Pattern opNamePattern = Pattern.compile("\"operationName\"\\s*:\\s*\"([^\"]+)\"");
 
-                // 이 traceID 다음부터 traceSection 끝까지 찾기
-                int traceEnd = findEndOfTraceObject(jsonResponse, traceStart);
-                String traceSection = jsonResponse.substring(traceStart, traceEnd);
+            Matcher spanObjectMatcher = spanObjectPattern.matcher(jsonResponse);
 
-                // 이 섹션에서 모든 spanID와 operationName 쌍 찾기
-                // 각 span 객체를 찾아서 spanID와 operationName 추출
-                Pattern spanIdPattern = Pattern.compile("\"spanID\"\\s*:\\s*\"([0-9a-fA-F]+)\"");
-                Pattern opNamePattern = Pattern.compile("\"operationName\"\\s*:\\s*\"([^\"]+)\"");
+            while (spanObjectMatcher.find()) {
+                String spanObject = spanObjectMatcher.group();
 
-                Matcher spanIdMatcher = spanIdPattern.matcher(traceSection);
-                Matcher opNameMatcher = opNamePattern.matcher(traceSection);
+                // 이 span 객체 안에서 spanID와 operationName 추출
+                Matcher spanIdMatcher = spanIdPattern.matcher(spanObject);
+                Matcher opNameMatcher = opNamePattern.matcher(spanObject);
 
-                // 모든 spanID와 operationName을 순서대로 추출
-                List<String> spanIds = new ArrayList<>();
-                List<String> opNames = new ArrayList<>();
+                if (spanIdMatcher.find() && opNameMatcher.find()) {
+                    String spanId = spanIdMatcher.group(1);
+                    String operationName = opNameMatcher.group(1);
 
-                while (spanIdMatcher.find()) {
-                    spanIds.add(spanIdMatcher.group(1));
-                }
-                while (opNameMatcher.find()) {
-                    opNames.add(opNameMatcher.group(1));
-                }
-
-                // 같은 span 객체 내의 spanID와 operationName은 인접해 있음
-                // 간단한 매칭: 같은 인덱스의 쌍이 같은 span 객체라고 가정
-                for (int i = 0; i < Math.min(spanIds.size(), opNames.size()); i++) {
-                    String operationName = opNames.get(i);
+                    // 타겟 operationName과 매칭 확인
                     if (targetOperationName.equals(operationName)) {
-                        String spanId = spanIds.get(i);
-                        // 중복 방지 (전역 Set 사용)
-                        String uniqueKey = traceId + ":" + spanId;
-                        if (!seenSpanKeys.contains(uniqueKey)) {
-                            seenSpanKeys.add(uniqueKey);
-                            spans.add(new SpanRef(traceId, spanId));
-                            System.out.println("[JaegerLink] Matched span: traceID=" + traceId + ", spanID=" + spanId + ", operation=" + operationName);
+                        // traceID 추출을 위해 앞 부분에서 traceID 찾기
+                        int spanStart = spanObjectMatcher.start();
+                        String beforeSpan = jsonResponse.substring(0, spanStart);
+
+                        // 가장 가까운 traceID 찾기
+                        Pattern tracePattern = Pattern.compile("\"traceID\"\\s*:\\s*\"([0-9a-fA-F]+)\"");
+                        Matcher traceMatcher = tracePattern.matcher(beforeSpan);
+
+                        String traceId = null;
+                        while (traceMatcher.find()) {
+                            traceId = traceMatcher.group(1);
+                        }
+
+                        if (traceId != null) {
+                            // 중복 방지
+                            String uniqueKey = traceId + ":" + spanId;
+                            if (!seenSpanKeys.contains(uniqueKey)) {
+                                seenSpanKeys.add(uniqueKey);
+                                spans.add(new SpanRef(traceId, spanId));
+                                System.out.println("[JaegerLink] Matched span: traceID=" + traceId + ", spanID=" + spanId + ", operation=" + operationName);
+                            }
                         }
                     }
                 }

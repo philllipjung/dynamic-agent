@@ -223,9 +223,29 @@ public class ByteBuddyAgent {
 
     /**
      * Initialize OpenTelemetry with OTLP exporter
+     * Integrates with OpenTelemetry Java Agent if available
      */
     private static void initializeOpenTelemetry() {
-        io.opentelemetry.sdk.OpenTelemetrySdk openTelemetry = io.opentelemetry.sdk.OpenTelemetrySdk.builder()
+        io.opentelemetry.api.OpenTelemetry openTelemetry;
+        io.opentelemetry.api.trace.Tracer tracer;
+
+        // Check if OpenTelemetry Java Agent is already initialized
+        try {
+            openTelemetry = io.opentelemetry.api.GlobalOpenTelemetry.get();
+            // Verify it's not the default noop implementation
+            if (openTelemetry != null && openTelemetry != io.opentelemetry.api.OpenTelemetry.noop()) {
+                System.out.println("[ByteBuddy] Using existing OpenTelemetry from Java Agent");
+                tracer = openTelemetry.getTracer("java-agent-bytebuddy", "1.0.0");
+                com.javaagent.bytebuddy.helper.SpanHelper.setTracer(tracer);
+                return;
+            }
+        } catch (Exception e) {
+            System.out.println("[ByteBuddy] OpenTelemetry Java Agent not detected, initializing SDK: " + e.getMessage());
+        }
+
+        // Fallback: Initialize OpenTelemetry SDK manually
+        System.out.println("[ByteBuddy] Initializing OpenTelemetry SDK manually");
+        openTelemetry = io.opentelemetry.sdk.OpenTelemetrySdk.builder()
             .setTracerProvider(io.opentelemetry.sdk.trace.SdkTracerProvider.builder()
                 .addSpanProcessor(io.opentelemetry.sdk.trace.export.SimpleSpanProcessor.create(
                     io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter.builder()
@@ -235,7 +255,7 @@ public class ByteBuddyAgent {
                 .build())
             .buildAndRegisterGlobal();
 
-        io.opentelemetry.api.trace.Tracer tracer = openTelemetry.getTracer("java-agent-bytebuddy");
+        tracer = openTelemetry.getTracer("java-agent-bytebuddy", "1.0.0");
         com.javaagent.bytebuddy.helper.SpanHelper.setTracer(tracer);
     }
 
