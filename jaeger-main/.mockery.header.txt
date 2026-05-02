@@ -1,4 +1,0 @@
-// Copyright (c) The Jaeger Authors.
-// SPDX-License-Identifier: Apache-2.0
-//
-// Run 'make generate-mocks' to regenerate.

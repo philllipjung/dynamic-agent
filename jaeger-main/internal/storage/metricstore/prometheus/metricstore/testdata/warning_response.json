@@ -1,8 +1,0 @@
-{
-  "status": "warning",
-  "warnings": ["warning0", "warning1"],
-  "data": {
-    "resultType": "matrix",
-    "result": []
-  }
-}
