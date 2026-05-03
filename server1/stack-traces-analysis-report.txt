@@ -1,0 +1,298 @@
+================================================================================
+JAVA STACK TRACES ANALYSIS REPORT
+================================================================================
+
+## OVERVIEW
+--------------------------------------------------------------------------------
+Total trace entries:     100
+Total samples collected: 262
+Unique threads:          12
+Avg samples per trace:   2.62
+
+## THREAD DISTRIBUTION
+--------------------------------------------------------------------------------
+Thread Name                                 Samples   Traces  Avg Depth   Kernel %
+--------------------------------------------------------------------------------
+VM Periodic Tas (tid=413435)                    104       20          7      57.2%
+G1 Refine#0 (tid=413433)                         87       24          7      65.4%
+Monitor Deflati (tid=413441)                     22        8         10      81.4%
+Attach Listener (tid=418088)                     13       12         13      78.0%
+reactor-http-epoll-2 (tid=413535)                10       10        181       0.8%
+C2 CompilerThre (tid=413442)                      7        7         12      24.7%
+G1 Service (tid=413434)                           5        5          5      60.0%
+C1 CompilerThre (tid=413443)                      5        5         13       0.0%
+VM Thread (tid=413436)                            4        4         12      83.3%
+okhttp-dispatch-1 (tid=413555)                    3        3         16       0.0%
+reactor-http-epoll-3 (tid=414363)                 1        1         41       0.0%
+BatchSpanProcessor_WorkerThread-1 (tid=413480)          1        1         15      40.0%
+
+## STACK DEPTH DISTRIBUTION
+--------------------------------------------------------------------------------
+      1-10 frames:     52 ( 52.0%) ##########################
+     11-20 frames:     37 ( 37.0%) ##################
+     21-30 frames:      1 (  1.0%) 
+     31-50 frames:      1 (  1.0%) 
+       50+ frames:      9 (  9.0%) ####
+
+## TOP 30 JAVA PACKAGES
+--------------------------------------------------------------------------------
+Package                                                       Occurrences
+--------------------------------------------------------------------------------
+reactor/core/publisher                                                965
+io/opentelemetry/javaagent/shaded/instrumentation/reactor/v3_1          359
+io/netty/channel                                                      226
+java/lang                                                              42
+io/netty/channel/epoll                                                 30
+reactor/netty/http/server                                              29
+io/netty/handler/codec                                                 21
+io/netty/util/concurrent                                               20
+org/springframework/boot/autoconfigure/web/reactive/error              20
+java/util/concurrent                                                   19
+java/lang/invoke                                                       16
+org/springframework/web/reactive/function                              12
+reactor/netty/channel                                                  11
+io/netty/util/internal                                                 10
+io/opentelemetry/javaagent/shaded/instrumentation/netty/v4_1/internal/server            9
+reactor/netty/transport                                                 9
+reactor/netty                                                           9
+okhttp3/internal/http                                                   9
+org/springframework/web/reactive/function/server                        6
+java/net                                                                5
+reactor/netty/http                                                      4
+org/springframework/web/server                                          4
+java/util/concurrent/locks                                              4
+org/springframework/web/server/handler                                  4
+okhttp3/internal/connection                                             4
+jdk/internal/misc                                                       3
+okhttp3/internal/http1                                                  3
+org/springframework/web/reactive/resource                               3
+java/util                                                               2
+org/springframework/web/server/adapter                                  2
+
+## TOP 30 JAVA CLASSES
+--------------------------------------------------------------------------------
+Class                                                         Occurrences
+--------------------------------------------------------------------------------
+TracingSubscriber                                                     359
+AbstractChannelHandlerContext                                         152
+InternalMonoOperator                                                   92
+MonoFlatMap$FlatMapMain                                                83
+FluxHide$SuppressFuseableSubscriber                                    74
+MonoNext$NextSubscriber                                                59
+Operators$MultiSubscriptionSubscriber                                  57
+FluxConcatMapNoPrefetch$FluxConcatMapNoPrefetchSubscriber              54
+FluxOnErrorResume$ResumeSubscriber                                     49
+FluxIterable                                                           36
+MonoPeekTerminal$MonoTerminalPeekSubscriber                            36
+FluxPeekFuseable$PeekFuseableSubscriber                                36
+MonoIgnoreThen$ThenIgnoreMain                                          35
+Mono                                                                   33
+MonoDefer                                                              32
+FluxMapFuseable$MapFuseableSubscriber                                  30
+Thread                                                                 28
+MonoIgnoreThen                                                         27
+FluxSwitchIfEmpty$SwitchIfEmptySubscriber                              25
+MonoError                                                              24
+Operators                                                              24
+FluxConcatArray$ConcatArraySubscriber                                  22
+EpollEventLoop                                                         20
+CombinedChannelDuplexHandler                                           20
+ByteToMessageDecoder                                                   20
+CombinedChannelDuplexHandler$DelegatingChannelHandlerContext           20
+FluxContextWrite$ContextWriteSubscriber                                20
+Operators$ScalarSubscription                                           19
+FluxIterable$IterableSubscription                                      18
+FluxOnAssembly$OnAssemblySubscriber                                    16
+
+## TOP 30 METHODS
+--------------------------------------------------------------------------------
+Method                                                                     Hits
+--------------------------------------------------------------------------------
+io/opentelemetry/javaagent/shaded/instrumentation/reactor/v3_1.Trac...      120
+io/opentelemetry/javaagent/shaded/instrumentation/reactor/v3_1.Trac...      103
+io/netty/channel.AbstractChannelHandlerContext.invokeChannelRead            100
+io/opentelemetry/javaagent/shaded/instrumentation/reactor/v3_1.Trac...       98
+reactor/core/publisher.InternalMonoOperator.subscribe                        92
+io/netty/channel.AbstractChannelHandlerContext.fireChannelRead               40
+reactor/core/publisher.FluxOnErrorResume$ResumeSubscriber.onError            40
+io/opentelemetry/javaagent/shaded/instrumentation/reactor/v3_1.Trac...       38
+reactor/core/publisher.FluxIterable.subscribe                                36
+reactor/core/publisher.MonoDefer.subscribe                                   32
+reactor/core/publisher.Mono.subscribe                                        32
+reactor/core/publisher.MonoPeekTerminal$MonoTerminalPeekSubscriber....       32
+reactor/core/publisher.MonoIgnoreThen.subscribe                              27
+reactor/core/publisher.MonoIgnoreThen$ThenIgnoreMain.subscribeNext           27
+reactor/core/publisher.MonoFlatMap$FlatMapMain.onNext                        25
+reactor/core/publisher.MonoError.subscribe                                   24
+reactor/core/publisher.Operators.error                                       24
+reactor/core/publisher.FluxHide$SuppressFuseableSubscriber.onError           24
+io/netty/channel.CombinedChannelDuplexHandler.channelRead                    20
+io/netty/channel.CombinedChannelDuplexHandler$DelegatingChannelHand...       20
+reactor/core/publisher.Operators$MultiSubscriptionSubscriber.onSubs...       20
+reactor/core/publisher.Operators$MultiSubscriptionSubscriber.set             20
+reactor/core/publisher.Operators$ScalarSubscription.request                  19
+reactor/core/publisher.FluxConcatMapNoPrefetch$FluxConcatMapNoPrefe...       18
+reactor/core/publisher.MonoNext$NextSubscriber.onSubscribe                   18
+reactor/core/publisher.MonoNext$NextSubscriber.request                       18
+reactor/core/publisher.FluxConcatMapNoPrefetch$FluxConcatMapNoPrefe...       18
+reactor/core/publisher.FluxHide$SuppressFuseableSubscriber.onNext            18
+reactor/core/publisher.FluxSwitchIfEmpty$SwitchIfEmptySubscriber.on...       17
+reactor/core/publisher.MonoFlatMap$FlatMapMain.onError                       16
+
+## KERNEL FRAME ANALYSIS
+--------------------------------------------------------------------------------
+Traces with kernel frames: 0 (0.0%)
+Total kernel frames: 507
+
+Top 20 kernel frame types:
+Frame Name                                              Count
+--------------------------------------------------------------------------------
+entry_SYSCALL_64_after_hwframe                             63
+do_syscall_64                                              62
+x64_sys_call                                               33
+syscall_exit_to_user_mode                                  26
+__x64_sys_futex                                            22
+do_futex                                                   22
+futex_wait                                                 22
+__futex_wait                                               19
+schedule                                                   17
+__schedule                                                 17
+finish_task_switch.isra.0                                  16
+futex_wait_queue                                           15
+__rseq_handle_notify_resume                                14
+rseq_ip_fixup                                              11
+__x64_sys_read                                              9
+ksys_read                                                   9
+vfs_read                                                    9
+seq_read                                                    9
+show_map                                                    8
+__get_user_8                                                7
+
+## NETTY I/O ACTIVITY
+--------------------------------------------------------------------------------
+Active Netty threads:
+  reactor-http-epoll-2                                     10 samples
+  reactor-http-epoll-3                                      1 samples
+
+Top 30 Netty/Reactor frames:
+Frame                                                                     Count
+--------------------------------------------------------------------------------
+io/opentelemetry/javaagent/shaded/instrumentation/reactor/v3_1.Trac...      120
+io/opentelemetry/javaagent/shaded/instrumentation/reactor/v3_1.Trac...      103
+io/opentelemetry/javaagent/shaded/instrumentation/reactor/v3_1.Trac...       98
+reactor/core/publisher.InternalMonoOperator.subscribe                        92
+reactor/core/publisher.FluxOnErrorResume$ResumeSubscriber.onError            40
+io/opentelemetry/javaagent/shaded/instrumentation/reactor/v3_1.Trac...       38
+reactor/core/publisher.FluxIterable.subscribe                                36
+reactor/core/publisher.MonoDefer.subscribe                                   32
+reactor/core/publisher.Mono.subscribe                                        32
+reactor/core/publisher.MonoPeekTerminal$MonoTerminalPeekSubscriber....       32
+reactor/core/publisher.MonoIgnoreThen.subscribe                              27
+reactor/core/publisher.MonoIgnoreThen$ThenIgnoreMain.subscribeNext           27
+reactor/core/publisher.MonoFlatMap$FlatMapMain.onNext                        25
+reactor/core/publisher.MonoError.subscribe                                   24
+reactor/core/publisher.Operators.error                                       24
+reactor/core/publisher.FluxHide$SuppressFuseableSubscriber.onError           24
+reactor/core/publisher.Operators$MultiSubscriptionSubscriber.onSubs...       20
+reactor/core/publisher.Operators$MultiSubscriptionSubscriber.set             20
+reactor/core/publisher.Operators$ScalarSubscription.request                  19
+reactor/core/publisher.FluxConcatMapNoPrefetch$FluxConcatMapNoPrefe...       18
+reactor/core/publisher.MonoNext$NextSubscriber.onSubscribe                   18
+reactor/core/publisher.MonoNext$NextSubscriber.request                       18
+reactor/core/publisher.FluxConcatMapNoPrefetch$FluxConcatMapNoPrefe...       18
+reactor/core/publisher.FluxHide$SuppressFuseableSubscriber.onNext            18
+reactor/core/publisher.FluxSwitchIfEmpty$SwitchIfEmptySubscriber.on...       17
+reactor/core/publisher.MonoFlatMap$FlatMapMain.onError                       16
+reactor/core/publisher.FluxOnAssembly$OnAssemblySubscriber.onError           16
+reactor/core/publisher.FluxHide$SuppressFuseableSubscriber.onSubscribe       16
+reactor/core/publisher.FluxHide$SuppressFuseableSubscriber.request           16
+reactor/core/publisher.MonoNext$NextSubscriber.onNext                        15
+
+## TOP 20 HOT EXECUTION PATHS
+--------------------------------------------------------------------------------
+
+#1. 34 samples (Thread: VM Periodic Tas, Depth: 13)
+    __futex_abstimed_wait_cancelable64 -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> x64_sys_call -> __x64_sys_futex
+    ...  -> do_futex -> futex_wait -> __futex_wait -> futex_wait_queue -> schedule
+
+#2. 34 samples (Thread: VM Periodic Tas, Depth: 13)
+    __futex_abstimed_wait_cancelable64 -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> x64_sys_call -> __x64_sys_futex
+    ...  -> do_futex -> futex_wait -> __futex_wait -> futex_wait_queue -> schedule
+
+#3. 23 samples (Thread: G1 Refine#0, Depth: 13)
+    __futex_abstimed_wait_cancelable64 -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> x64_sys_call -> __x64_sys_futex
+    ...  -> do_futex -> futex_wait -> __futex_wait -> futex_wait_queue -> schedule
+
+#4. 23 samples (Thread: G1 Refine#0, Depth: 13)
+    __futex_abstimed_wait_cancelable64 -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> x64_sys_call -> __x64_sys_futex
+    ...  -> do_futex -> futex_wait -> __futex_wait -> futex_wait_queue -> schedule
+
+#5. 14 samples (Thread: G1 Refine#0, Depth: 2)
+    __futex_abstimed_wait_cancelable64
+
+#6. 12 samples (Thread: VM Periodic Tas, Depth: 2)
+    __futex_abstimed_wait_cancelable64
+
+#7. 7 samples (Thread: G1 Refine#0, Depth: 8)
+    __futex_abstimed_wait_cancelable64 -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> syscall_exit_to_user_mode -> __
+    ... rseq_handle_notify_resume -> rseq_ip_fixup -> __get_user_8
+
+#8. 6 samples (Thread: Monitor Deflati, Depth: 13)
+    __futex_abstimed_wait_cancelable64 -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> x64_sys_call -> __x64_sys_futex
+    ...  -> do_futex -> futex_wait -> __futex_wait -> futex_wait_queue -> schedule
+
+#9. 6 samples (Thread: Monitor Deflati, Depth: 13)
+    __futex_abstimed_wait_cancelable64 -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> x64_sys_call -> __x64_sys_futex
+    ...  -> do_futex -> futex_wait -> __futex_wait -> futex_wait_queue -> schedule
+
+#10. 5 samples (Thread: VM Periodic Tas, Depth: 8)
+    __futex_abstimed_wait_cancelable64 -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> syscall_exit_to_user_mode -> __
+    ... rseq_handle_notify_resume -> rseq_ip_fixup -> __get_user_8
+
+#11. 3 samples (Thread: Monitor Deflati, Depth: 2)
+    __futex_abstimed_wait_cancelable64
+
+#12. 3 samples (Thread: Monitor Deflati, Depth: 2)
+    __futex_abstimed_wait_cancelable64
+
+#13. 2 samples (Thread: VM Periodic Tas, Depth: 7)
+    __futex_abstimed_wait_cancelable64 -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> syscall_exit_to_user_mode -> __
+    ... rseq_handle_notify_resume -> rseq_ip_fixup
+
+#14. 2 samples (Thread: VM Periodic Tas, Depth: 10)
+    __futex_abstimed_wait_cancelable64 -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> x64_sys_call -> __x64_sys_futex
+    ...  -> do_futex -> futex_wait -> __futex_wait -> _raw_spin_lock
+
+#15. 2 samples (Thread: Attach Listener, Depth: 2)
+    __GI___read
+
+#16. 2 samples (Thread: VM Periodic Tas, Depth: 7)
+    __futex_abstimed_wait_cancelable64 -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> syscall_exit_to_user_mode -> __
+    ... rseq_handle_notify_resume -> rseq_ip_fixup
+
+#17. 1 samples (Thread: G1 Service, Depth: 8)
+    __futex_abstimed_wait_cancelable64 -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> syscall_exit_to_user_mode -> __
+    ... rseq_handle_notify_resume -> rseq_ip_fixup -> __get_user_8
+
+#18. 1 samples (Thread: reactor-http-epoll-2, Depth: 289)
+    java/lang/Thread.run -> java/lang/Thread.runWith -> io/netty/util/concurrent/FastThreadLocalRunnable.run -> io/netty/uti
+    ... l/internal/ThreadExecutorMap$2.run -> io/netty/util/concurrent/SingleThreadEventExecutor$4.run -> io/netty/channel/epoll
+
+#19. 1 samples (Thread: Attach Listener, Depth: 10)
+    __GI___read -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> x64_sys_call -> __x64_sys_read -> ksys_read -> vfs_rea
+    ... d -> seq_read -> show_map
+
+#20. 1 samples (Thread: G1 Refine#0, Depth: 10)
+    __futex_abstimed_wait_cancelable64 -> entry_SYSCALL_64_after_hwframe -> do_syscall_64 -> x64_sys_call -> __x64_sys_futex
+    ...  -> do_futex -> futex_wait -> __futex_wait -> _raw_spin_lock
+
+## JVM INTERNAL ACTIVITY
+--------------------------------------------------------------------------------
+JVM internal thread activity:
+  VM                                    108 samples
+  G1                                     92 samples
+  Compiler                               12 samples
+
+================================================================================
+END OF REPORT
+================================================================================

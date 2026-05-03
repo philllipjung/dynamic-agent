@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.example.server2.grpc";
+option java_outer_classname = "MLServiceProto";
+
+package ml;
+
+// ML Job Submission Service
+service MLJobService {
+  rpc SubmitClassificationJob(ClassificationRequest) returns (JobResponse);
+}
+
+message ClassificationRequest {
+  string job_id = 1;
+  string input_path = 2;
+  string output_path = 3;
+  string model_type = 4; // "logistic", "decision_tree", "random_forest"
+  map<string, string> parameters = 5;
+}
+
+message JobResponse {
+  bool success = 1;
+  string message = 2;
+  string job_id = 3;
+}
