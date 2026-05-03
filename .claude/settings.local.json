@@ -338,7 +338,14 @@
       "Bash(pkill -f \"test2-service\")",
       "Bash(/dev/null cat:*)",
       "Bash(xargs -I {} taskkill //F //PID {} 2)",
-      "Bash(/dev/null sleep:*)"
+      "Bash(/dev/null sleep:*)",
+      "Bash(spark-submit --version)",
+      "Bash(ls -d /opt/spark*)",
+      "Read(//c/Users/EUROPE/**)",
+      "Bash(cmd.exe /c test-spark-job.bat)",
+      "Bash(tasklist //FI 'IMAGENAME eq java.exe')",
+      "Bash(findstr :8081)",
+      "Bash(git rm:*)"
     ]
   }
 }

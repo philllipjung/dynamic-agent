@@ -1,1 +1,7 @@
-[]
+[
+  {
+    "transactionNumber": "9eabb825c2e53c79a20caa82d5b5dd3a",
+    "batchType": "WORDCOUNT",
+    "status": "PENDING"
+  }
+]
