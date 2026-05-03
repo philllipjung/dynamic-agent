@@ -3,8 +3,14 @@ package com.javaagent.test.spark.job;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.RowFactory;
+import org.apache.spark.sql.types.*;
+import static org.apache.spark.sql.functions.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * WordCount Spark Job
@@ -34,28 +40,29 @@ public class WordCountJob {
                 .getOrCreate();
 
         try {
-            // Sample data
-            Dataset<Row> data = spark.createDataFrame(
-                new java.util.ArrayList<Object>() {{
-                    add(new java.util.AbstractMap.SimpleEntry<>("text", "hello world hello spark"));
-                    add(new java.util.AbstractMap.SimpleEntry<>("text", "spark tracing is awesome"));
-                    add(new java.util.AbstractMap.SimpleEntry<>("text", "distributed tracing with spark"));
-                }},
-                java.util.Map.class
+            // Define schema
+            StructType schema = new StructType(new StructField[]{
+                new StructField("text", DataTypes.StringType, false, Metadata.empty())
+            });
+
+            // Create sample data
+            List<Row> data = Arrays.asList(
+                RowFactory.create("hello world hello spark"),
+                RowFactory.create("spark tracing is awesome"),
+                RowFactory.create("distributed tracing with spark")
             );
 
-            log.info("Input data: {} rows", data.count());
+            Dataset<Row> textData = spark.createDataFrame(data, schema);
+
+            log.info("Input data: {} rows", textData.count());
 
             // Word count logic
-            Dataset<Row> wordCounts = data
-                .select(org.apache.spark.sql.functions.explode(
-                    org.apache.spark.sql.functions.split(
-                        org.apache.spark.sql.functions.col("value"), " "
-                    )
-                ).as("word"))
-                .filter(org.apache.spark.sql.functions.col("word").notEqual(""))
+            Dataset<Row> wordCounts = textData
+                .select(explode(split(col("text"), " ")).as("word"))
+                .filter(col("word").notEqual(""))
                 .groupBy("word")
-                .count();
+                .count()
+                .orderBy(col("count").desc());
 
             log.info("Word counts:");
             wordCounts.show();

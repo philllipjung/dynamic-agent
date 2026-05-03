@@ -110,11 +110,11 @@ public class OpenSearchBatchProcessor {
     }
 
     /**
-     * Search OpenSearch for transaction attribute
+     * Search OpenSearch for transaction attribute or Trace ID
      */
     private SpanContextInfo searchTransactionInOpenSearch(String transactionNumber) {
         try {
-            // OpenSearch Query: Find span with transaction attribute (nested query)
+            // Try transaction tag search first
             String query = String.format(
                 "{\"query\":{\"nested\":{\"path\":\"tags\",\"query\":{\"bool\":{\"must\":[{\"match\":{\"tags.key\":\"transaction\"}},{\"match\":{\"tags.value\":\"%s\"}}]}}}}}",
                 transactionNumber
@@ -144,21 +144,25 @@ public class OpenSearchBatchProcessor {
                 if (hits != null) {
                     List<Map<String, Object>> hitsList = (List<Map<String, Object>>) hits.get("hits");
 
-                    if (hitsList != null && !hitsList.isEmpty()) {
-                        Map<String, Object> firstHit = hitsList.get(0);
-                        Map<String, Object> source = (Map<String, Object>) firstHit.get("_source");
-
-                        String traceId = (String) source.get("traceID");
-                        String spanId = (String) source.get("spanID");
-
-                        log.info("Found span in OpenSearch - Trace ID: {}, Span ID: {}", traceId, spanId);
-
-                        return SpanContextInfo.builder()
-                                .transactionNumber(transactionNumber)
-                                .traceId(traceId)
-                                .spanId(spanId)
-                                .build();
+                    // If transaction tag search failed, try Trace ID search
+                    if (hitsList == null || hitsList.isEmpty()) {
+                        log.info("Transaction tag not found, trying Trace ID search for: {}", transactionNumber);
+                        return searchByTraceId(transactionNumber, today);
                     }
+
+                    Map<String, Object> firstHit = hitsList.get(0);
+                    Map<String, Object> source = (Map<String, Object>) firstHit.get("_source");
+
+                    String traceId = (String) source.get("traceID");
+                    String spanId = (String) source.get("spanID");
+
+                    log.info("Found span in OpenSearch - Trace ID: {}, Span ID: {}", traceId, spanId);
+
+                    return SpanContextInfo.builder()
+                            .transactionNumber(transactionNumber)
+                            .traceId(traceId)
+                            .spanId(spanId)
+                            .build();
                 }
             }
 
@@ -167,6 +171,63 @@ public class OpenSearchBatchProcessor {
 
         } catch (Exception e) {
             log.error("Error searching OpenSearch", e);
+            return null;
+        }
+    }
+
+    /**
+     * Search by Trace ID directly
+     */
+    private SpanContextInfo searchByTraceId(String traceId, String today) {
+        try {
+            String query = String.format(
+                "{\"query\":{\"term\":{\"traceID\":\"%s\"}},\"size\":1}",
+                traceId
+            );
+
+            URL url = new URL(openSearchUrl + "/jaeger-span-" + today + "/_search");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(5000);
+
+            conn.getOutputStream().write(query.getBytes());
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode == 200) {
+                String response = new String(conn.getInputStream().readAllBytes());
+
+                Map<String, Object> responseData = objectMapper.readValue(response, Map.class);
+                Map<String, Object> hits = (Map<String, Object>) responseData.get("hits");
+
+                if (hits != null) {
+                    List<Map<String, Object>> hitsList = (List<Map<String, Object>>) hits.get("hits");
+
+                    if (hitsList != null && !hitsList.isEmpty()) {
+                        Map<String, Object> firstHit = hitsList.get(0);
+                        Map<String, Object> source = (Map<String, Object>) firstHit.get("_source");
+
+                        String foundTraceId = (String) source.get("traceID");
+                        String spanId = (String) source.get("spanID");
+
+                        log.info("Found span by Trace ID - Trace ID: {}, Span ID: {}", foundTraceId, spanId);
+
+                        return SpanContextInfo.builder()
+                                .transactionNumber(traceId)  // Using traceId as transactionNumber
+                                .traceId(foundTraceId)
+                                .spanId(spanId)
+                                .build();
+                    }
+                }
+            }
+
+            log.warn("No span found for Trace ID - HTTP {}", responseCode);
+            return null;
+
+        } catch (Exception e) {
+            log.error("Error searching by Trace ID", e);
             return null;
         }
     }

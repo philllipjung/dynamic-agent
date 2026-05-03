@@ -3,11 +3,17 @@ package com.javaagent.spark.instrumentation;
 import com.javaagent.commons.config.OtelConfig;
 
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
+import io.opentelemetry.sdk.trace.export.SpanExporter;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
@@ -39,7 +45,7 @@ public class SparkJobInstrumentation {
     public static volatile Tracer customTracer;
 
     /**
-     * Get or create custom OpenTelemetry SDK instance
+     * Get or create custom OpenTelemetry SDK for Spark Jobs
      */
     public static synchronized OpenTelemetrySdk getCustomOpenTelemetry() {
         if (customOpenTelemetry == null) {
@@ -59,12 +65,12 @@ public class SparkJobInstrumentation {
                     .addSpanProcessor(SimpleSpanProcessor.create(spanExporter))
                     .build();
 
-            // Build OpenTelemetry SDK
+            // Build OpenTelemetry SDK (but DON'T register global to avoid conflicts)
             customOpenTelemetry = OpenTelemetrySdk.builder()
                     .setTracerProvider(tracerProvider)
-                    .buildAndRegisterGlobal();
+                    .build();
 
-            customTracer = customOpenTelemetry.getTracer("spark-job", "1.0.0");
+            customTracer = customOpenTelemetry.getTracer("spark-job-instrumentation", "1.0.0");
 
             logger.info("[SparkJobInstrumentation] Custom OpenTelemetry SDK initialized successfully");
         }
@@ -114,7 +120,8 @@ public class SparkJobInstrumentation {
                 @Advice.Local("tracer") Tracer tracer,
                 @Advice.Local("span") Span span,
                 @Advice.Local("parentContext") Context parentContext,
-                @Advice.Local("scope") io.opentelemetry.context.Scope scope) {
+                @Advice.Local("scope") io.opentelemetry.context.Scope scope,
+                @Advice.Local("parsedTraceId") String parsedTraceId) {
 
             Logger logger = Logger.getLogger("SparkJobInstrumentation");
 
@@ -126,8 +133,11 @@ public class SparkJobInstrumentation {
             logger.info("[SparkJobInstrumentation] Traceparent from -Dtraceparent: " + traceParent);
 
             // Get or create custom OpenTelemetry SDK
-            OpenTelemetrySdk openTelemetry = getCustomOpenTelemetry();
+            getCustomOpenTelemetry();
             tracer = customTracer;
+
+            // Initialize parsedTraceId
+            parsedTraceId = null;
 
             // Parse traceparent and create parent context
             parentContext = Context.root();
@@ -137,6 +147,7 @@ public class SparkJobInstrumentation {
                     if (parts.length == 4 && parts[0].equals("00")) {
                         String traceId = parts[1];
                         String spanId = parts[2];
+                        parsedTraceId = traceId;  // Store for later verification
 
                         logger.info("[SparkJobInstrumentation] Parsed traceparent - TraceID: " + traceId + ", SpanID: " + spanId);
 
@@ -161,20 +172,39 @@ public class SparkJobInstrumentation {
                 }
             }
 
-            // Build span with parent context using custom SDK
-            span = tracer.spanBuilder("spark.job")
-                    .setParent(parentContext)
-                    .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
-                    .startSpan();
+            // CRITICAL: OpenTelemetry SpanBuilder uses Context.current() internally
+            // We MUST make parentContext current BEFORE building span
+            io.opentelemetry.context.Scope parentScope = parentContext.makeCurrent();
 
-            span.setAttribute("job.name", jobName);
-            span.setAttribute("job.type", "spark");
+            try {
+                // Now tracer.spanBuilder() will use Context.current() = parentContext
+                span = tracer.spanBuilder("spark.job")
+                        .setSpanKind(io.opentelemetry.api.trace.SpanKind.INTERNAL)
+                        .startSpan();
 
-            // Make span current
-            scope = span.makeCurrent();
+                span.setAttribute("job.name", jobName);
+                span.setAttribute("job.type", "spark");
 
-            logger.info("[SparkJobInstrumentation] Span created: " + span.getSpanContext().getSpanId());
-            logger.info("[SparkJobInstrumentation] Trace ID: " + span.getSpanContext().getTraceId());
+                // Make span current
+                scope = span.makeCurrent();
+
+                logger.info("[SparkJobInstrumentation] Span created: " + span.getSpanContext().getSpanId());
+                logger.info("[SparkJobInstrumentation] Trace ID: " + span.getSpanContext().getTraceId());
+
+                // Verify trace continuity
+                if (parsedTraceId != null) {
+                    String actualTraceId = span.getSpanContext().getTraceId();
+                    if (parsedTraceId.equalsIgnoreCase(actualTraceId)) {
+                        logger.info("[SparkJobInstrumentation] ✓ Trace ID continuity VERIFIED!");
+                    } else {
+                        logger.warning("[SparkJobInstrumentation] ✗ Trace ID mismatch! Expected: " + parsedTraceId + ", Actual: " + actualTraceId);
+                    }
+                }
+            } finally {
+                // Close parent scope AFTER span is created
+                // The span's scope is still active (span.makeCurrent())
+                parentScope.close();
+            }
         }
 
         @Advice.OnMethodExit(onThrowable = Throwable.class)
