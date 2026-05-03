@@ -345,7 +345,20 @@
       "Bash(cmd.exe /c test-spark-job.bat)",
       "Bash(tasklist //FI 'IMAGENAME eq java.exe')",
       "Bash(findstr :8081)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(find . -name *MCP* -type f)",
+      "Bash(sed 's/.*: //')",
+      "Bash(./redis-server.exe --service-install redis.windows.conf)",
+      "Bash(./redis-cli.exe ping:*)",
+      "Bash(SESSION_ID=\"IHCXMDZXLBHBEDIXQCKQEUKRPR\" echo \"=== 1. Health Check ===\" curl -s -X POST http://localhost:16687/mcp -H \"Content-Type: application/json\" -H \"Mcp-Session-Id: $SESSION_ID\" -d '{\"\"\"\"jsonrpc\"\"\"\":\"\"\"\"2.0\"\"\"\",\"\"\"\"id\"\"\"\":1,\"\"\"\"method\"\"\"\":\"\"\"\"tools/call\"\"\"\",\"\"\"\"params\"\"\"\":{\"\"\"\"name\"\"\"\":\"\"\"\"health\"\"\"\",\"\"\"\"arguments\"\"\"\":{}}}')",
+      "Bash(SESSION_ID=\"IHCXMDZXLBHBEDIXQCKQEUKRPR\" echo \"=== 2. Get Services ===\" curl -s -X POST http://localhost:16687/mcp -H \"Content-Type: application/json\" -H \"Mcp-Session-Id: $SESSION_ID\" -d '{\"\"\"\"jsonrpc\"\"\"\":\"\"\"\"2.0\"\"\"\",\"\"\"\"id\"\"\"\":2,\"\"\"\"method\"\"\"\":\"\"\"\"tools/call\"\"\"\",\"\"\"\"params\"\"\"\":{\"\"\"\"name\"\"\"\":\"\"\"\"get_services\"\"\"\",\"\"\"\"arguments\"\"\"\":{}}}')",
+      "Bash(SESSION_ID=\"IHCXMDZXLBHBEDIXQCKQEUKRPR\" echo \"=== 3. Get Span Names \\(jaeger\\) ===\" curl -s -X POST http://localhost:16687/mcp -H \"Content-Type: application/json\" -H \"Mcp-Session-Id: $SESSION_ID\" -d '{\"\"\"\"jsonrpc\"\"\"\":\"\"\"\"2.0\"\"\"\",\"\"\"\"id\"\"\"\":3,\"\"\"\"method\"\"\"\":\"\"\"\"tools/call\"\"\"\",\"\"\"\"params\"\"\"\":{\"\"\"\"name\"\"\"\":\"\"\"\"get_span_names\"\"\"\",\"\"\"\"arguments\"\"\"\":{\"\"\"\"service_name\"\"\"\":\"\"\"\"jaeger\"\"\"\"}}}')",
+      "Bash(SESSION_ID=\"IHCXMDZXLBHBEDIXQCKQEUKRPR\")",
+      "Bash(SESSION_ID=\"IHCXMDZXLBHBEDIXQCKQEUKRPR\" __NEW_LINE_2399f49e86cd0085__ echo \"=== 1. Health Check ===\" curl -s -X POST http://localhost:16687/mcp -H \"Content-Type: application/json\" -H \"Mcp-Session-Id: $SESSION_ID\" -d '{\"\"\"\"jsonrpc\"\"\"\":\"\"\"\"2.0\"\"\"\",\"\"\"\"id\"\"\"\":1,\"\"\"\"method\"\"\"\":\"\"\"\"tools/call\"\"\"\",\"\"\"\"params\"\"\"\":{\"\"\"\"name\"\"\"\":\"\"\"\"health\"\"\"\",\"\"\"\"arguments\"\"\"\":{}}}')",
+      "Bash(python -c \"import sys, json; d=json.load\\(sys.stdin\\); traces=d[''''result''''][''''structuredContent'''']; print\\(''''Total traces found:'''', len\\(traces\\)\\); [print\\(''''  - TraceID:'''', t[''''traceID''''], ''''| Spans:'''', t[''''spanCount'''']\\) for t in traces[:3]]\")",
+      "Bash(SESSION_ID=\"IHCXMDZXLBHBEDIXQCKQEUKRPR\" __NEW_LINE_256e7f94cb86e1e1__ echo \"=== Test 1: Health Check \\(raw\\) ===\" curl -s -X POST http://localhost:16687/mcp -H \"Content-Type: application/json\" -H \"Mcp-Session-Id: $SESSION_ID\" -d '{\"\"\"\"jsonrpc\"\"\"\":\"\"\"\"2.0\"\"\"\",\"\"\"\"id\"\"\"\":1,\"\"\"\"method\"\"\"\":\"\"\"\"tools/call\"\"\"\",\"\"\"\"params\"\"\"\":{\"\"\"\"name\"\"\"\":\"\"\"\"health\"\"\"\",\"\"\"\"arguments\"\"\"\":{}}}')",
+      "Bash(tee /tmp/health_response.txt echo \"\" echo \"=== Test 2: Parse with sed only ===\" cat /tmp/health_response.txt)",
+      "Bash(SESSION_ID=\"IHCXMDZXLBHBEDIXQCKQEUKRPR\" __NEW_LINE_d24c99ff4f49f858__ echo \"=== Full Response Analysis ===\" echo \"\" __NEW_LINE_d24c99ff4f49f858__ echo \"1. Get Services - Full Response:\" curl -s -X POST http://localhost:16687/mcp -H \"Content-Type: application/json\" -H \"Mcp-Session-Id: $SESSION_ID\" -d '{\"\"\"\"jsonrpc\"\"\"\":\"\"\"\"2.0\"\"\"\",\"\"\"\"id\"\"\"\":2,\"\"\"\"method\"\"\"\":\"\"\"\"tools/call\"\"\"\",\"\"\"\"params\"\"\"\":{\"\"\"\"name\"\"\"\":\"\"\"\"get_services\"\"\"\",\"\"\"\"arguments\"\"\"\":{}}}')"
     ]
   }
 }

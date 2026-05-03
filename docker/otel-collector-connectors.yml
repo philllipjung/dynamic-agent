@@ -1,0 +1,399 @@
+# OTEL Collector Configuration with SpanMetrics + ServiceGraph Connectors
+# Traces → Jaeger → OpenSearch (for SPM computation)
+# Metrics → Data Prepper → OpenSearch
+# Span/Service Graph Metrics → Prometheus
+# Logs → OpenSearch
+
+receivers:
+  # Host metrics receiver (CPU, memory, disk, network, etc.)
+  hostmetrics:
+    scrapers:
+      cpu:
+      disk:
+      filesystem:
+      load:
+      memory:
+      network:
+
+  # Scrape Node Exporter metrics
+  prometheus/node:
+    config:
+      scrape_configs:
+        - job_name: 'node-exporter'
+          static_configs:
+            - targets: ['node-exporter:9100']
+    # Use Prometheus receiver to scrape Node Exporter
+
+  # Docker container stats
+  docker_stats:
+
+  # Collect Docker container logs from host
+  filelog/containers:
+    include:
+      - /var/log/containers/*.log
+    include_file_name: false
+    include_file_path: true
+    start_at: end
+    # Parse JSON log format from Docker
+    operators:
+      - type: json_parser
+        parse_from: body
+        parse_to: attributes
+      - type: regex_parser
+        regex: '^(?P<stream>[^ ]+) (?P<timestamp>[^ ]+) (?P<log>.+)$'
+        parse_from: attributes.log
+        parse_to: body
+      - type: move
+        from: attributes.stream
+        to: attributes.log.stream
+      - type: move
+        from: attributes.log.timestamp
+        to: attributes.log.timestamp
+      - type: move
+        from: attributes.log.log
+        to: body
+    # Add container metadata from filename
+    attributes:
+      log_type: container
+
+  # Collect Docker container stdout/stderr logs
+  filelog/docker:
+    include:
+      - /var/lib/docker/containers/*/*.log
+    include_file_name: false
+    include_file_path: true
+    start_at: end
+    poll_interval: 1s
+    # Docker logs are in JSON format
+    operators:
+      - type: json_parser
+        parse_from: body
+        parse_to: attributes
+      # Extract log fields
+      - type: move
+        from: attributes.log
+        to: body
+      - type: move
+        from: attributes.time
+        to: attributes.timestamp
+      - type: move
+        from: attributes.stream
+        to: attributes.log.stream
+    # Add container metadata
+    attributes:
+      log_type: docker
+
+  # OTLP receiver for applications (traces, metrics, logs)
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - "http://localhost:4070"
+            - "http://localhost:3000"
+            - "*"
+          allowed_headers:
+            - "*"
+          max_age: 7200
+
+processors:
+  # Batch processing for better performance
+  batch:
+
+  # Resource detection - adds host, system, cloud, docker metadata
+  # Comprehensive resource detection for all telemetry
+  # Note: Cloud detectors (ec2, gcp, azure) will skip if not in cloud environment
+  resourcedetection/env:
+    detectors: [env, system, docker, ec2, gcp, azure]
+    timeout: 5s
+    override: false
+
+  # Resource processor - adds custom labels to all telemetry
+  resource/add_custom_labels:
+    attributes:
+      - key: cluster
+        value: monitoring-stack
+        action: upsert
+      - key: datacenter
+        value: us-west-1
+        action: upsert
+      - key: region
+        value: us-west
+        action: upsert
+      - key: team
+        value: platform
+        action: upsert
+      - key: cost_center
+        value: engineering
+        action: upsert
+      - key: department
+        value: engineering
+        action: upsert
+      - key: organization
+        value: observability
+        action: upsert
+      - key: monitoring_tier
+        value: production
+        action: upsert
+      - key: infrastructure
+        value: docker
+        action: upsert
+      - key: platform_type
+        value: linux
+        action: upsert
+
+  # Filter out OTEL's own internal traces
+  filter/exclude_otel_exports:
+    traces:
+      span:
+        - 'attributes["url.full"] != nil and IsMatch(attributes["url.full"], ".*opentelemetry.proto.collector.*")'
+
+# ========== CONNECTORS ==========
+connectors:
+  # SpanMetrics Connector: Generates RED metrics from spans
+  spanmetrics:
+    # Histogram buckets for span duration (ms)
+    dimensions:
+      - name: http.method
+        default: unknown
+      - name: http.status_code
+        default: ""
+      - name: http.route
+      - name: http.scheme
+        default: http
+      - name: http.host
+      - name: http.user_agent
+      - name: http.target
+      - name: net.host.name
+      - name: net.host.port
+      - name: net.peer.name
+      - name: net.peer.port
+      - name: net.transport
+        default: tcp
+      - name: net.sock.peer.addr
+      - name: net.sock.peer.port
+      - name: service.version
+      - name: service.namespace
+      - name: deployment.environment
+      - name: telemetry.sdk.name
+        default: opentelemetry
+      - name: telemetry.sdk.language
+      - name: db.name
+      - name: db.system
+      - name: db.statement
+      - name: db.operation
+      - name: messaging.system
+      - name: messaging.destination
+      - name: messaging.destination_kind
+      - name: peer.service
+      - name: rpc.system
+      - name: rpc.service
+      - name: rpc.method
+      - name: code.namespace
+      - name: code.function
+      - name: code.filepath
+      - name: thread.id
+      - name: thread.name
+      - name: process.executable.name
+      - name: process.command
+      - name: process.pid
+      - name: http.client_ip
+      - name: http.request_content_length
+      - name: http.response_content_length
+      - name: http.flavor
+      - name: net.sock.host.addr
+      - name: net.sock.host.port
+      - name: enduser.id
+      - name: enduser.role
+      - name: enduser.scope
+      - name: faas.execution
+      - name: faas.id
+      - name: faas.trigger
+      - name: aws.lambda.invoked_arn
+      - name: cloud.account.id
+      - name: cloud.region
+      - name: cloud.zone
+      - name: container.name
+      - name: container.id
+      - name: k8s.pod.name
+      - name: k8s.namespace.name
+      - name: k8s.node.name
+      - name: k8s.deployment.name
+      - name: k8s.statefulset.name
+      - name: k8s.daemonset.name
+      - name: k8s.job.name
+      - name: k8s.cronjob.name
+    dimensions_cache_size: 2000
+    metrics_flush_interval: 15s
+    # Disable aggregation temporality for cumulative metrics
+    aggregation_temporality: CUMULATIVE
+
+  # ServiceGraph Connector: Generates service dependency metrics
+  servicegraph:
+    # Latency histogram buckets
+    latency_histogram_buckets:
+      - 100us
+      - 500us
+      - 1ms
+      - 5ms
+      - 10ms
+      - 50ms
+      - 100ms
+      - 250ms
+      - 500ms
+      - 1s
+      - 5s
+      - 10s
+    # Store settings for pairing client/server spans
+    store:
+      # TTL for unpaired spans (how long to wait for matching span)
+      ttl: 60s
+      # Maximum number of unpaired spans to keep
+      max_items: 10000
+    # Virtual node settings (for uninstrumented services like databases)
+    virtual_node_peer_attributes:
+      - peer.service
+      - db.name
+      - db.system
+      - db.statement
+      - db.operation
+      - messaging.system
+      - messaging.destination
+      - messaging.destination_kind
+      - rpc.service
+      - rpc.method
+      - http.route
+      - http.method
+    # Add extra label for virtual nodes
+    virtual_node_extra_label: true
+    # How often to emit metrics
+    metrics_flush_interval: 15s
+
+exporters:
+  # Export traces to Jaeger (for SPM with OpenSearch backend)
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Export traces to Data Prepper (for Trace Analytics)
+  otlp/traces:
+    endpoint: data-prepper:21890
+    tls:
+      insecure: true
+
+  # Export metrics to Data Prepper (sends to OpenSearch)
+  otlp/metrics:
+    endpoint: data-prepper:21891
+    tls:
+      insecure: true
+
+  # Export logs directly to OpenSearch
+  opensearch:
+    http:
+      endpoint: http://opensearch:9200
+      tls:
+        insecure: true
+
+  # Prometheus exporter for SpanMetrics and ServiceGraph metrics
+  prometheusremotewrite:
+    endpoint: http://prometheus:9090/api/v1/write
+    tls:
+      insecure: true
+
+  # Prometheus exporter (for scraping)
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    const_labels:
+      continent: north-america
+      country: us
+      provider: on-premise
+      runtime: collector
+      telemetry_type: prometheus
+      deployment_stage: production
+      monitoring_enabled: "true"
+      data_lake: opensearch
+      grafana_tenant: default
+      sla_level: gold
+      business_unit: platform
+      business_line: observability
+    # Enable target_info metric and export all resource attributes
+    resource_to_telemetry_conversion:
+      enabled: true
+    # Add empty resource labels to metrics (helps with container detection)
+
+  # Debug exporter (optional - comment out in production)
+  debug:
+    verbosity: normal
+
+  # File exporter for eBPF profiles (writes JSONL format)
+  file/profiles:
+    path: /var/log/otel-collector/profiles/profiles.jsonl
+
+  # File exporter for Java agent profiles (writes JSONL format)
+  file/profiles-java:
+    path: /var/log/otel-collector/profiles-java/profiles-java.jsonl
+
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    # ========== TRACES PIPELINE ==========
+    # App → OTEL Collector → [SpanMetrics, ServiceGraph] → [Jaeger + Data Prepper] → OpenSearch
+    traces:
+      receivers: [otlp]
+      processors: [resourcedetection/env, resource/add_custom_labels, filter/exclude_otel_exports, batch]
+      exporters: [spanmetrics, servicegraph, otlp/jaeger, otlp/traces]
+
+    # ========== METRICS PIPELINE (Host/Docker/App) ==========
+    # Host/Docker/App → OTEL Collector → Data Prepper → [otel_metrics + ss4o_metric-default-namespace]
+    metrics:
+      receivers: [hostmetrics, docker_stats, otlp]
+      processors: [resourcedetection/env, resource/add_custom_labels, batch]
+      exporters: [otlp/metrics]
+
+    # ========== NODE EXPORTER PIPELINE ==========
+    # Node Exporter → OTEL Collector → Prometheus
+    metrics/nodeexporter:
+      receivers: [prometheus/node]
+      processors: [resourcedetection/env, resource/add_custom_labels, batch]
+      exporters: [prometheus]
+
+    # ========== SPAN METRICS PIPELINE ==========
+    # SpanMetrics Connector → [Prometheus + Data Prepper → OpenSearch]
+    metrics/spanmetrics:
+      receivers: [spanmetrics]
+      processors: [resourcedetection/env, resource/add_custom_labels, batch]
+      exporters: [prometheus, otlp/metrics]
+
+    # ========== SERVICE GRAPH PIPELINE ==========
+    # ServiceGraph Connector → [Prometheus + Data Prepper → OpenSearch]
+    metrics/servicegraph:
+      receivers: [servicegraph]
+      processors: [resourcedetection/env, resource/add_custom_labels, batch]
+      exporters: [prometheus, otlp/metrics]
+
+    # ========== LOGS PIPELINE ==========
+    # Container logs + App logs → OTEL Collector → OpenSearch
+    logs:
+      receivers: [filelog/containers, filelog/docker, otlp]
+      processors: [resourcedetection/env, resource/add_custom_labels, batch]
+      exporters: [opensearch]
+
+    # ========== PROFILES PIPELINE (eBPF Profiler) ==========
+    # eBPF Profiler → OTEL Collector → JSON Files → Fluent Bit → OpenSearch
+    profiles:
+      receivers: [otlp]
+      processors: [resourcedetection/env, resource/add_custom_labels]
+      exporters: [file/profiles]
+
+    # ========== PROFILES PIPELINE (OTel Java Agent/Server1) ==========
+    # server1 with OTel Java Agent (otel.profiling.enabled) → OTEL Collector → File → Fluent Bit → OpenSearch
+    profiles/otlp:
+      receivers: [otlp]
+      processors: [resourcedetection/env, resource/add_custom_labels]
+      exporters: [file/profiles-java]

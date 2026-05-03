@@ -1,0 +1,2 @@
+event: message
+data: {"jsonrpc":"2.0","id":1198189,"result":{"content":[{"type":"text","text":"{\"server\":\"jaeger\",\"status\":\"ok\",\"version\":\"v2.16.0\"}"}],"structuredContent":{"server":"jaeger","status":"ok","version":"v2.16.0"}}}

@@ -1,0 +1,186 @@
+# Docker Compose with Data Prepper + Jaeger SPM + OTEL Collector
+# OTEL Collector: hostmetrics, resource detection, docker_stats
+# Jaeger: Option 2 (Direct OpenSearch querying for SPM)
+# Data Prepper: Metrics pipeline to OpenSearch
+
+services:
+  # ========== OPENSEARCH ==========
+  opensearch:
+    image: opensearchproject/opensearch:3.1.0
+    container_name: opensearch
+    networks:
+      - backend
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "DISABLE_INSTALL_DEMO_CONFIG=true"
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+      - plugins.security.disabled=true
+      - http.host=0.0.0.0
+      - transport.host=127.0.0.1
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # ========== OPENSEARCH DASHBOARDS ==========
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:3.1.0
+    container_name: opensearch-dashboards
+    networks:
+      - backend
+    ports:
+      - "5601:5601"
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+  # ========== PROMETHEUS (Optional - for OTEL Collector metrics) ==========
+  prometheus:
+    image: prom/prometheus:v3.9.1
+    container_name: prometheus
+    networks:
+      - backend
+    command:
+      - --config.file=/etc/prometheus.yaml
+    volumes:
+      - ./prometheus-connectors.yml:/etc/prometheus.yaml
+    ports:
+      - "9090:9090"
+
+  # ========== NODE EXPORTER ==========
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    networks:
+      - backend
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/host/root'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    ports:
+      - "9100:9100"
+    restart: unless-stopped
+
+  # ========== DATA PREPPER ==========
+  data-prepper:
+    image: opensearchproject/data-prepper:latest
+    container_name: data-prepper
+    networks:
+      - backend
+    volumes:
+      - ./data-prepper-pipelines-simple.yaml:/usr/share/data-prepper/pipelines/data-prepper-pipelines.yaml
+      - ./data-prepper-config-simple.yaml:/usr/share/data-prepper/config/data-prepper-config.yaml
+    ports:
+      - "2021:2021"
+      - "21890:21890"
+      - "21891:21891"
+      - "4900:4900"
+    depends_on:
+      - opensearch
+
+  # ========== JAEGER v2 (SPM with OpenSearch Option 2) ==========
+  jaeger:
+    image: jaegertracing/jaeger:${JAEGER_VERSION:-latest}
+    container_name: jaeger
+    networks:
+      - backend
+    volumes:
+      - ./jaeger-ui.json:/etc/jaeger/jaeger-ui.json
+      - ./config-spm-opensearch.yaml:/etc/jaeger/config.yml
+    command: ["--config", "/etc/jaeger/config.yml"]
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "8888:8888"   # Jaeger internal metrics (for Prometheus scraping)
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+  # ========== OTEL COLLECTOR (Your existing config) ==========
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.146.1
+    container_name: otel-collector
+    networks:
+      - backend
+    user: "0:0"
+    command:
+      - "--config=/etc/otel-collector-connectors.yml"
+      - "--feature-gates=service.profilesSupport"
+    volumes:
+      - ./otel-collector-connectors.yml:/etc/otel-collector-connectors.yml
+      - ./profiles:/var/log/otel-collector/profiles
+      - ./profiles-java:/var/log/otel-collector/profiles-java
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys/kernel/debug:/sys/kernel/debug:ro
+      - /proc:/proc:ro
+      - /var/log/containers:/var/log/containers:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/log/journal:/var/log/journal:ro
+      - /run/log/journal:/run/log/journal:ro
+    privileged: true
+    ports:
+      - "4317:4317"  # OTLP gRPC receiver (for applications)
+      - "4318:4318"  # OTLP HTTP receiver (for applications)
+      - "8889:8889"  # Prometheus metrics endpoint
+      - "13133:13133"  # Health check
+    depends_on:
+      - opensearch
+      - jaeger
+      - data-prepper
+      - prometheus
+
+  # ========== FLUENT BIT (Profile Exporter to OpenSearch) ==========
+  fluent-bit-profiles:
+    image: fluent/fluent-bit:3.1.9
+    container_name: fluent-bit-profiles
+    networks:
+      - backend
+    volumes:
+      - ./profiles:/var/log/otel-collector/profiles
+      - ./profiles-java:/var/log/otel-collector/profiles-java
+      - ./fluent-bit-profiles-simple.conf:/fluent-bit/etc/fluent-bit.conf
+      - ./parsers.conf:/fluent-bit/etc/parsers.conf
+      - fluent-bit-logs:/var/log
+    depends_on:
+      - opensearch
+      - otel-collector
+
+  # ========== TRACE SIMULATOR (Optional) ==========
+  microsim:
+    image: yurishkuro/microsim:v0.6.0
+    networks:
+      - backend
+    command: "-d 24h -s 500ms"
+    environment:
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
+    depends_on:
+      - otel-collector
+
+networks:
+  backend:
+
+volumes:
+  esdata:
+    driver: local
+  fluent-bit-logs:
+    driver: local
