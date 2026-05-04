@@ -38,6 +38,28 @@ public class BatchInstrumentation {
     public static volatile Tracer customTracer;
 
     /**
+     * Java Agent premain - called when JVM starts with -javaagent
+     */
+    public static void premain(String agentArgs, Instrumentation instrumentation) {
+        log.info("[BatchInstrumentation] ========================================");
+        log.info("[BatchInstrumentation] Java Agent loaded via premain()");
+        log.info("[BatchInstrumentation] Agent args: " + agentArgs);
+        log.info("[BatchInstrumentation] ========================================");
+        install(instrumentation);
+    }
+
+    /**
+     * Java Agent agentmain - called when agent is attached to running JVM
+     */
+    public static void agentmain(String agentArgs, Instrumentation instrumentation) {
+        log.info("[BatchInstrumentation] ========================================");
+        log.info("[BatchInstrumentation] Java Agent attached via agentmain()");
+        log.info("[BatchInstrumentation] Agent args: " + agentArgs);
+        log.info("[BatchInstrumentation] ========================================");
+        install(instrumentation);
+    }
+
+    /**
      * Get or create custom OpenTelemetry SDK instance
      */
     public static synchronized OpenTelemetrySdk getCustomOpenTelemetry() {

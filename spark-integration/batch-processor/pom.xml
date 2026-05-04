@@ -128,7 +128,13 @@
                         <configuration>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.javaagent.spark.batch.OpenSearchBatchProcessor</mainClass>
+                                    <manifestEntries>
+                                        <Premain-Class>com.javaagent.spark.batch.BatchInstrumentation</Premain-Class>
+                                        <Agent-Class>com.javaagent.spark.batch.BatchInstrumentation</Agent-Class>
+                                        <Main-Class>com.javaagent.spark.batch.OpenSearchBatchProcessor</Main-Class>
+                                        <Can-Retransform-Classes>true</Can-Retransform-Classes>
+                                        <Can-Redefine-Classes>true</Can-Redefine-Classes>
+                                    </manifestEntries>
                                 </transformer>
                             </transformers>
                         </configuration>

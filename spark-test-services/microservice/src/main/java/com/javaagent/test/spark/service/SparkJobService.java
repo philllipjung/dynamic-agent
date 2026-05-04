@@ -29,7 +29,13 @@ public class SparkJobService {
             command.add("com.javaagent.test.spark.job.WordCountJob");
             command.add("--master");
             command.add("local[*]");
-            command.add("-Dtraceparent=" + traceparent);  // Pass traceparent to Spark job
+
+            // Pass traceparent via Spark configuration
+            command.add("--conf");
+            command.add("spark.driver.extraJavaOptions=-Dtraceparent=" + traceparent);
+            command.add("--conf");
+            command.add("spark.executor.extraJavaOptions=-Dtraceparent=" + traceparent);
+
             command.add("../spark-test-services/spark-job/target/spark-test-job-1.0.0.jar");
 
             ProcessBuilder pb = new ProcessBuilder(command);
