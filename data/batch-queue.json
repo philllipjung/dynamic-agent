@@ -1,0 +1,7 @@
+[
+  {
+    "transactionNumber": "TXN123",
+    "batchType": "WORDCOUNT",
+    "status": "PENDING"
+  }
+]

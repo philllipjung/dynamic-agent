@@ -1,0 +1,225 @@
+================================================================================
+JAVA CALL TREES ANALYSIS REPORT
+================================================================================
+
+## OVERVIEW
+--------------------------------------------------------------------------------
+Total entries:            51
+  - Call tree entries:    1
+  - Hot path entries:     50
+
+Aggregated Statistics:
+  Total samples:           112
+  Total traces:            106
+  Unique packages:         67
+  Unique classes:          227
+
+## CALL TREE STRUCTURE ANALYSIS
+--------------------------------------------------------------------------------
+Total tree nodes:          1
+  - Branch nodes:          0 (0.0%)
+  - Leaf nodes:            1 (100.0%)
+Maximum tree depth:        0
+
+Tree depth distribution (aggregated):
+  Depth   0:        1 nodes (100.0%) ##################################################
+
+## THREAD DISTRIBUTION
+--------------------------------------------------------------------------------
+Thread                                   Samples    Trees  Hot Paths
+--------------------------------------------------------------------------------
+C2 CompilerThre                              131        1         12
+reactor-http-epoll-2                          13        0         11
+VM Periodic Tas                                9        0          6
+C1 CompilerThre                                7        0          6
+G1 Refine#0                                    6        0          5
+reactor-http-epoll-1                           4        0          4
+unknown                                        3        0          1
+reactor-http-epoll-4                           3        0          2
+reactor-http-epoll-3                           1        0          1
+Attach Listener                                1        0          1
+G1 Conc#0                                      1        0          1
+
+## TOP 30 HOT PATHS (by sample count)
+--------------------------------------------------------------------------------
+Path Name                                             Samples     Self   Hits Threads
+--------------------------------------------------------------------------------
+IndexSet::lrg_union                                         3        3      1      1
+clock_gettime@@GLIBC_2.17                                   3        3      1      1
+PhaseChaitin::gather_lrg_masks                              3        3      1      1
+finish_task_switch.isra.0_[k]                               3        3      1      1
+PhaseChaitin::interfere_with_live                           2        2      1      1
+PhaseChaitin::Split                                         2        2      1      1
+_dl_update_slotinfo                                         2        2      1      1
+___pthread_cond_timedwait64                                 2        2      1      1
+SymbolTable::do_lookup                                      2        2      1      1
+__vfprintf_internal                                         2        2      1      1
+java.util.zip.ZipFile$Source.getEntryPos                    2        2      1      1
+clear_page_erms_[k]                                         2        2      1      1
+IndexSetIterator::advance_and_next                          2        2      1      1
+io.netty.util.internal.PlatformDependent0.hashC...          1        1      1      1
+Profiler::dump                                              1        1      1      1
+irqentry_exit_to_user_mode_[k]                              1        1      1      1
+void OopOopIterateDispatch<G1CMOopClosure>::Tab...          1        1      1      1
+futex_wake_[k]                                              1        1      1      1
+__dcigettext                                                1        1      1      1
+_IO_default_xsputn                                          1        1      1      1
+com.fasterxml.jackson.databind.ser.DefaultSeria...          1        1      1      1
+do_syscall_64_[k]                                           1        1      1      1
+StatSamplerTask::task                                       1        1      1      1
+ValueStack::values_do                                       1        1      1      1
+CompilationPolicy::select_task                              1        1      1      1
+NullCheckEliminator::handle_Phi                             1        1      1      1
+IR::eliminate_null_checks                                   1        1      1      1
+methodHandle::~methodHandle                                 1        1      1      1
+__futex_abstimed_wait_cancelable64                          1        1      1      1
+java.lang.String.contains                                   1        1      1      1
+
+## TOP 30 JAVA PACKAGES (by occurrence)
+--------------------------------------------------------------------------------
+Package                                                         Trees    Samples
+--------------------------------------------------------------------------------
+com.fasterxml.jackson.databind                                      1        112
+com.fasterxml.jackson.databind.cfg                                  1        112
+com.fasterxml.jackson.databind.introspect                           1        112
+com.fasterxml.jackson.databind.ser                                  1        112
+com.fasterxml.jackson.databind.ser.impl                             1        112
+com.fasterxml.jackson.databind.ser.std                              1        112
+com.fasterxml.jackson.databind.type                                 1        112
+io.micrometer.observation.docs                                      1        112
+io.netty.buffer                                                     1        112
+io.netty.channel                                                    1        112
+io.netty.channel.epoll                                              1        112
+io.netty.channel.unix                                               1        112
+io.netty.handler.codec                                              1        112
+io.netty.handler.codec.http                                         1        112
+io.netty.util                                                       1        112
+io.netty.util.concurrent                                            1        112
+io.netty.util.internal                                              1        112
+io.netty.util.internal.shaded.org.jctools.queues                    1        112
+io.netty.util.internal.shaded.org.jctools.util                      1        112
+java.lang                                                           1        112
+java.lang.invoke                                                    1        112
+java.lang.invoke.LambdaForm$MH                                      1        112
+java.net                                                            1        112
+java.security                                                       1        112
+java.time.format                                                    1        112
+java.util                                                           1        112
+java.util.concurrent.atomic                                         1        112
+java.util.jar                                                       1        112
+java.util.zip                                                       1        112
+jdk.internal.loader                                                 1        112
+
+## TOP 20 EXECUTION PATTERNS (3-frame sequences)
+--------------------------------------------------------------------------------
+Pattern                                                                 Count
+--------------------------------------------------------------------------------
+
+## TOP 30 METHODS BY SELF-SAMPLES
+--------------------------------------------------------------------------------
+Method/Frame                                                    Self Samples
+--------------------------------------------------------------------------------
+IndexSet::lrg_union                                                        3
+clock_gettime@@GLIBC_2.17                                                  3
+PhaseChaitin::gather_lrg_masks                                             3
+finish_task_switch.isra.0_[k]                                              3
+PhaseChaitin::interfere_with_live                                          2
+PhaseChaitin::Split                                                        2
+_dl_update_slotinfo                                                        2
+___pthread_cond_timedwait64                                                2
+SymbolTable::do_lookup                                                     2
+__vfprintf_internal                                                        2
+java.util.zip.ZipFile$Source.getEntryPos                                   2
+clear_page_erms_[k]                                                        2
+IndexSetIterator::advance_and_next                                         2
+io.netty.util.internal.PlatformDependent0.hashCodeAscii                    1
+Profiler::dump                                                             1
+irqentry_exit_to_user_mode_[k]                                             1
+void OopOopIterateDispatch<G1CMOopClosure>::Table::oop_oo...               1
+futex_wake_[k]                                                             1
+__dcigettext                                                               1
+_IO_default_xsputn                                                         1
+com.fasterxml.jackson.databind.ser.DefaultSerializerProvi...               1
+do_syscall_64_[k]                                                          1
+StatSamplerTask::task                                                      1
+ValueStack::values_do                                                      1
+CompilationPolicy::select_task                                             1
+NullCheckEliminator::handle_Phi                                            1
+IR::eliminate_null_checks                                                  1
+methodHandle::~methodHandle                                                1
+__futex_abstimed_wait_cancelable64                                         1
+java.lang.String.contains                                                  1
+
+## CALL TREE COMPLEXITY BY THREAD
+--------------------------------------------------------------------------------
+Thread                                   Nodes  Depth     Leaves   Branches    Samples
+--------------------------------------------------------------------------------
+C2 CompilerThre                              1      0          1          0        112
+
+## HOT PATH DEPTH DISTRIBUTION
+--------------------------------------------------------------------------------
+Depth Range          Count   Percentage
+--------------------------------------------------------------------------------
+1-5                     50       100.0% ##################################################
+6-10                     0         0.0% 
+11-20                    0         0.0% 
+21-30                    0         0.0% 
+30+                      0         0.0% 
+
+## SAMPLE CONCENTRATION ANALYSIS
+--------------------------------------------------------------------------------
+Top paths contributing to 50% of samples:
+   1. IndexSet::lrg_union                                (C2 CompilerThre)
+   2. clock_gettime@@GLIBC_2.17                          (VM Periodic Tas)
+   3. PhaseChaitin::gather_lrg_masks                     (C2 CompilerThre)
+   4. finish_task_switch.isra.0_[k]                      (None)
+   5. PhaseChaitin::interfere_with_live                  (C2 CompilerThre)
+   6. PhaseChaitin::Split                                (C2 CompilerThre)
+   7. _dl_update_slotinfo                                (VM Periodic Tas)
+   8. ___pthread_cond_timedwait64                        (G1 Refine#0)
+   9. SymbolTable::do_lookup                             (reactor-http-epoll-2)
+  10. __vfprintf_internal                                (C1 CompilerThre)
+  11. java.util.zip.ZipFile$Source.getEntryPos           (reactor-http-epoll-4)
+  12. clear_page_erms_[k]                                (reactor-http-epoll-2)
+  13. IndexSetIterator::advance_and_next                 (C2 CompilerThre)
+  14. io.netty.util.internal.PlatformDependent0.hashCode (reactor-http-epoll-3)
+  15. Profiler::dump                                     (Attach Listener)
+  16. irqentry_exit_to_user_mode_[k]                     (C2 CompilerThre)
+  17. void OopOopIterateDispatch<G1CMOopClosure>::Table: (G1 Conc#0)
+  18. futex_wake_[k]                                     (VM Periodic Tas)
+  19. __dcigettext                                       (reactor-http-epoll-1)
+  20. _IO_default_xsputn                                 (C1 CompilerThre)
+  21. com.fasterxml.jackson.databind.ser.DefaultSerializ (reactor-http-epoll-1)
+  22. do_syscall_64_[k]                                  (G1 Refine#0)
+  23. StatSamplerTask::task                              (VM Periodic Tas)
+  24. ValueStack::values_do                              (C1 CompilerThre)
+  25. CompilationPolicy::select_task                     (C1 CompilerThre)
+  26. NullCheckEliminator::handle_Phi                    (C1 CompilerThre)
+  27. IR::eliminate_null_checks                          (C1 CompilerThre)
+  28. methodHandle::~methodHandle                        (reactor-http-epoll-2)
+  29. __futex_abstimed_wait_cancelable64                 (VM Periodic Tas)
+  30. java.lang.String.contains                          (reactor-http-epoll-1)
+  31. _raw_spin_unlock_irqrestore_[k]                    (reactor-http-epoll-2)
+  32. ClassFileParser::parse_constant_pool_entries       (reactor-http-epoll-2)
+  33. update_get_addr                                    (G1 Refine#0)
+  34. __futex_wait_[k]                                   (VM Periodic Tas)
+  35. ConNode::Opcode                                    (C2 CompilerThre)
+  36. Monitor::wait_without_safepoint_check              (G1 Refine#0)
+  37. PhaseAggressiveCoalesce::insert_copies             (C2 CompilerThre)
+  38. reactor.core.publisher.FluxPeekFuseable$PeekFuseab (reactor-http-epoll-1)
+  39. G1ConcurrentRefine::adjust_threads_periodically    (G1 Refine#0)
+  40. Dict::doubhash                                     (C2 CompilerThre)
+  41. __inet_lookup_established_[k]                      (reactor-http-epoll-2)
+  42. SystemDictionary::resolve_from_stream              (reactor-http-epoll-2)
+  43. java.util.concurrent.atomic.AtomicBoolean.lazySet  (reactor-http-epoll-2)
+  44. PhaseIterGVN::add_users_to_worklist0               (C2 CompilerThre)
+  45. io.netty.channel.epoll.AbstractEpollChannel.isFlag (reactor-http-epoll-2)
+  46. jbyte_disjoint_arraycopy                           (reactor-http-epoll-2)
+  47. PhaseOutput::BuildOopMaps                          (C2 CompilerThre)
+  48. BarrierSetNMethod::nmethod_stub_entry_barrier      (reactor-http-epoll-2)
+  49. com.fasterxml.jackson.databind.ser.impl.ReadOnlyCl (reactor-http-epoll-4)
+  50. PhaseIterGVN::transform_old                        (C2 CompilerThre)
+
+================================================================================
+END OF REPORT
+================================================================================

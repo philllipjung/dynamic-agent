@@ -1,0 +1,64 @@
+metric-pipeline:
+  source:
+    otel_metrics_source:
+      ssl: false
+  processor:
+    - otel_metrics:
+  sink:
+    - opensearch:
+        hosts: [ "http://opensearch:9200" ]
+        insecure: true
+        index: otel_metrics
+    - opensearch:
+        hosts: [ "http://opensearch:9200" ]
+        insecure: true
+        index: ss4o_metric-default-namespace
+entry-pipeline:
+  delay: "100"
+  source:
+    otel_trace_source:
+      ssl: false
+  buffer:
+    bounded_blocking:
+      buffer_size: 10240
+      batch_size: 160
+  sink:
+    - pipeline:
+        name: "raw-trace-pipeline"
+    - pipeline:
+        name: "service-map-pipeline"
+raw-trace-pipeline:
+  source:
+    pipeline:
+      name: "entry-pipeline"
+  buffer:
+    bounded_blocking:
+      buffer_size: 10240
+      batch_size: 160
+  processor:
+    - otel_traces:
+  sink:
+    - opensearch:
+        hosts: ["http://opensearch:9200"]
+        insecure: true
+        index_type: trace-analytics-raw
+    - opensearch:
+        hosts: ["http://opensearch:9200"]
+        insecure: true
+        index: ss4o_trace-default-namespace
+service-map-pipeline:
+  delay: "100"
+  source:
+    pipeline:
+      name: "entry-pipeline"
+  buffer:
+    bounded_blocking:
+      buffer_size: 10240
+      batch_size: 160
+  processor:
+    - service_map:
+  sink:
+    - opensearch:
+        hosts: ["http://opensearch:9200"]
+        insecure: true
+        index_type: trace-analytics-service-map

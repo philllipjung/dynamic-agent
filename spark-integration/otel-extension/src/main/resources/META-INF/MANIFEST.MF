@@ -1,0 +1,5 @@
+Manifest-Version: 1.0
+Premain-Class: com.javaagent.spark.otel.SparkOtelAgent
+Agent-Class: com.javaagent.spark.otel.SparkOtelAgent
+Can-Redefine-Classes: true
+Can-Retransform-Classes: true

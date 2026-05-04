@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.javaagent</groupId>
+        <artifactId>test-services</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>test2-service</artifactId>
+    <packaging>jar</packaging>
+
+    <properties>
+        <test2.port>8082</test2.port>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.javaagent</groupId>
+            <artifactId>shared</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring.boot.version}</version>
+                <configuration>
+                    <jvmArguments>
+                        --add-opens java.base/java.lang=ALL-UNNAMED
+                        --add-opens java.base/java.lang.reflect=ALL-UNNAMED
+                        --add-opens java.base/java.io=ALL-UNNAMED
+                        -javaagent:${project.basedir}/../../opentelemetry-javaagent.jar
+                    </jvmArguments>
+                    <environmentVariables>
+                        <OTEL_EXPORTER_OTLP_ENDPOINT>http://localhost:4318</OTEL_EXPORTER_OTLP_ENDPOINT>
+                        <OTEL_EXPORTER_OTLP_PROTOCOL>http/protobuf</OTEL_EXPORTER_OTLP_PROTOCOL>
+                        <OTEL_SERVICE_NAME>test2-service</OTEL_SERVICE_NAME>
+                        <OTEL_RESOURCE_ATTRIBUTES>service.name=test2-service</OTEL_RESOURCE_ATTRIBUTES>
+                        <OTEL_TRACES_EXPORTER>otlp</OTEL_TRACES_EXPORTER>
+                        <OTEL_METRICS_EXPORTER>none</OTEL_METRICS_EXPORTER>
+                        <OTEL_LOGS_EXPORTER>none</OTEL_LOGS_EXPORTER>
+                    </environmentVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

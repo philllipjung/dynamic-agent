@@ -1,0 +1,76 @@
+# Prometheus Configuration for SpanMetrics + ServiceGraph Connectors
+# Scrapes OTEL Collector for pre-aggregated trace metrics
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Scrape configurations
+scrape_configs:
+  # ========== OTEL COLLECTOR METRICS ==========
+  # SpanMetrics + ServiceGraph metrics from OTEL Collector
+  - job_name: 'otel-collector-connectors'
+    static_configs:
+      - targets: ['otel-collector:8889']
+        labels:
+          cluster: 'monitoring-stack'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # ========== JAEGER METRICS ==========
+  # Jaeger internal metrics (including SpanMetrics if Jaeger-native is used)
+  - job_name: 'jaeger'
+    static_configs:
+      - targets: ['jaeger:8888']
+        labels:
+          cluster: 'monitoring-stack'
+    scrape_interval: 15s
+    scrape_timeout: 5s
+
+  # ========== OTEL COLLECTOR SELF METRICS ==========
+  # OTEL Collector's own metrics (health, performance)
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['otel-collector:8889']
+        labels:
+          cluster: 'monitoring-stack'
+    scrape_interval: 15s
+    scrape_timeout: 5s
+    # Metric relabeling to distinguish collector self-metrics from span/service metrics
+    metric_relabel_configs:
+      # Add prefix to collector's own internal metrics
+      - source_labels: [__name__]
+        regex: '(otel_collector_|target_|scrape_).*'
+        target_label: __name__
+        replacement: 'otel_collector_${1}'
+        action: replace
+
+  # ========== OPENSEARCH METRICS ==========
+  - job_name: 'opensearch'
+    static_configs:
+      - targets: ['opensearch:9200']
+        labels:
+          cluster: 'monitoring-stack'
+    scheme: http
+    metrics_path: '/_prometheus/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # ========== DATA PREPPER METRICS ==========
+  - job_name: 'data-prepper'
+    static_configs:
+      - targets: ['data-prepper:4900']
+        labels:
+          cluster: 'monitoring-stack'
+    scrape_interval: 15s
+    scrape_timeout: 5s
+    metrics_path: '/metrics'
+
+  # ========== NODE EXPORTER METRICS ==========
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          cluster: 'monitoring-stack'
+    scrape_interval: 15s
+    scrape_timeout: 5s
