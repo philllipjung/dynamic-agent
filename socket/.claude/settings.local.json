@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn clean:*)",
+      "Bash(java:*)",
+      "Bash(mvn compile:*)",
+      "Bash(mvn package:*)",
+      "Bash(mvn compiler:compile -q)",
+      "Bash(curl -L -o opentelemetry-javaagent.jar https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.3.0/opentelemetry-javaagent.jar)",
+      "Bash(curl:*)",
+      "Bash(ls -la /c/Users/EUROPE/agent/socket/*.jar)",
+      "Bash(find /c/Users/EUROPE -name *opentelemetry-javaagent*.jar -type f)",
+      "Bash(javac:*)",
+      "Bash(jar -tf target/spring-boot-socket-server-1.0.0.jar)",
+      "Bash(unzip -l target/spring-boot-socket-server-1.0.0.jar)",
+      "Bash(unzip -p target/spring-boot-socket-server-1.0.0.jar BOOT-INF/classes/com/socket/server/SocketHandler.class)",
+      "Bash(javap -c -p -)",
+      "Read(//c/Users/EUROPE/.m2/repository/io/opentelemetry/javaagent/opentelemetry-javaagent/1.32.0//**)",
+      "Read(//c/Users/EUROPE/.m2/repository/io/opentelemetry/javaagent/opentelemetry-javaagent/**)"
+    ]
+  }
+}
